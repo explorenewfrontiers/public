@@ -1,0 +1,13 @@
+version: '3.8'
+
+services:
+  stripe-mcp:
+    build: .
+    ports:
+      - "8000:8000"
+    environment:
+      - STRIPE_API_KEY=${STRIPE_API_KEY}
+      - PORT=8000
+    volumes:
+      - ./dist:/app/dist
+    restart: unless-stopped
