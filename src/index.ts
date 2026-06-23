@@ -1,5 +1,6 @@
 import http from 'http';
 import Stripe from 'stripe';
+import { parseProductCatalog, syncProductsToStripe, getStripeProducts, getProductWithPrices } from './catalog.js';
 
 interface JSONRPCRequest {
   jsonrpc: '2.0';
@@ -154,6 +155,39 @@ const tools: Record<string, ToolDefinition> = {
       required: ['invoice_id'],
     },
   },
+  'list_products': {
+    name: 'list_products',
+    description: 'List all products from Stripe catalog',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        limit: { type: 'number', description: 'Max number of products to return (default: 10)' },
+      },
+      required: [],
+    },
+  },
+  'get_product': {
+    name: 'get_product',
+    description: 'Get product details with pricing information',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        product_id: { type: 'string', description: 'The product ID' },
+      },
+      required: ['product_id'],
+    },
+  },
+  'sync_catalog': {
+    name: 'sync_catalog',
+    description: 'Sync product catalog from Excel file to Stripe',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        file_path: { type: 'string', description: 'Path to the Excel catalog file' },
+      },
+      required: ['file_path'],
+    },
+  },
 };
 
 async function handleToolCall(
@@ -217,6 +251,48 @@ async function handleToolCall(
     case 'get_invoice': {
       const invoice = await client.invoices.retrieve(input.invoice_id as string);
       return invoice;
+    }
+    case 'list_products': {
+      const products = await getStripeProducts(client, (input.limit as number) || 10);
+      return {
+        products: products.map((p) => ({
+          id: p.id,
+          name: p.name,
+          description: p.description,
+          images: p.images,
+          metadata: p.metadata,
+        })),
+      };
+    }
+    case 'get_product': {
+      const result = await getProductWithPrices(client, input.product_id as string);
+      return {
+        product: {
+          id: result.product.id,
+          name: result.product.name,
+          description: result.product.description,
+          images: result.product.images,
+          metadata: result.product.metadata,
+        },
+        prices: result.prices.map((p) => ({
+          id: p.id,
+          product: p.product,
+          unit_amount: p.unit_amount,
+          currency: p.currency,
+          recurring: p.recurring,
+        })),
+      };
+    }
+    case 'sync_catalog': {
+      const filePath = input.file_path as string;
+      const products = await parseProductCatalog(filePath);
+      const result = await syncProductsToStripe(products, client);
+      return {
+        created_count: result.created.length,
+        updated_count: result.updated.length,
+        created: result.created.map((p) => ({ id: p.id, name: p.name })),
+        updated: result.updated.map((p) => ({ id: p.id, name: p.name })),
+      };
     }
     default:
       throw new Error(`Unknown tool: ${toolName}`);

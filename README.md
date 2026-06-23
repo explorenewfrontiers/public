@@ -77,18 +77,32 @@ curl -X POST http://localhost:8000 \
 
 ### Development
 
+MCP Server only:
 ```bash
 npm run dev
+```
+
+Website only:
+```bash
+npm run dev:web
+```
+
+Both servers together:
+```bash
+npm run dev:both
 ```
 
 ### Production
 
 ```bash
 npm run build
-npm start
+npm start          # MCP Server on port 8000
+npm run start:web  # Website on port 3000
+npm run start:both # Both together
 ```
 
-The server will start on `http://localhost:8000` by default.
+- **MCP Server** will listen on `http://localhost:8000` (configurable with PORT env var)
+- **Website** will listen on `http://localhost:3000` (configurable with WEB_PORT env var)
 
 ## Usage with Claude Code
 
@@ -102,6 +116,71 @@ For a remote server:
 
 ```bash
 claude mcp add --transport http stripe https://mcp.stripe.com
+```
+
+## Product Catalog & Website
+
+### Syncing Products from Excel
+
+Use the `sync_catalog` tool to import products from an Excel file:
+
+```json
+{
+  "jsonrpc": "2.0",
+  "method": "call_tool",
+  "params": {
+    "name": "sync_catalog",
+    "arguments": {
+      "file_path": "/path/to/CFT_Stripe_Product_Catalog_1.xlsx"
+    }
+  },
+  "id": 1
+}
+```
+
+**Excel File Format:**
+Your spreadsheet should have columns for:
+- `Name` (required) - Product name
+- `Description` - Product description
+- `Price` - Price in dollars (e.g., 29.99)
+- `Currency` - Currency code (default: usd)
+- `Image URL` - URL to product image
+- `Category` - Product category
+- `SKU` - Stock keeping unit
+
+### Product Website
+
+The included website displays your Stripe products with:
+- Product catalog with images
+- Search functionality
+- Shopping cart
+- Stripe checkout integration
+- Responsive design
+
+Access at `http://localhost:3000`
+
+### Website APIs
+
+#### Get All Products
+```bash
+GET /api/products?limit=20
+```
+
+#### Get Product with Prices
+```bash
+GET /api/products/{productId}
+```
+
+#### Create Checkout Session
+```bash
+POST /api/checkout
+Content-Type: application/json
+
+{
+  "items": [
+    { "priceId": "price_xxx", "quantity": 1 }
+  ]
+}
 ```
 
 ## Available Tools
@@ -175,6 +254,29 @@ Get a specific invoice.
 
 **Parameters:**
 - `invoice_id` (string, required): The invoice ID
+
+### Products
+
+#### `list_products`
+List all products in the Stripe catalog.
+
+**Parameters:**
+- `limit` (number, optional): Max products to return (default: 10)
+
+#### `get_product`
+Get product details with pricing information.
+
+**Parameters:**
+- `product_id` (string, required): The product ID
+
+#### `sync_catalog`
+Sync product catalog from Excel file to Stripe. Creates new products and updates existing ones.
+
+**Parameters:**
+- `file_path` (string, required): Path to the Excel catalog file (.xlsx)
+
+**Excel Format:**
+Requires columns: Name, Price, Description (optional), Image URL (optional), Category (optional), SKU (optional)
 
 ## API Protocol
 
