@@ -29,9 +29,22 @@ interface ToolDefinition {
   };
 }
 
-const stripe = new Stripe(process.env.STRIPE_API_KEY || '');
+const stripeApiKey = process.env.STRIPE_API_KEY || '';
 const mpcApiKey = process.env.MCP_API_KEY;
 const mpcAuthEnabled = mpcApiKey !== undefined;
+
+function getStripeClient(stripeAccount?: string): Stripe {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const options: any = {
+    apiVersion: '2024-11-20',
+  };
+
+  if (stripeAccount) {
+    options.stripeAccount = stripeAccount;
+  }
+
+  return new Stripe(stripeApiKey, options);
+}
 
 const tools: Record<string, ToolDefinition> = {
   'list_customers': {
@@ -143,21 +156,27 @@ const tools: Record<string, ToolDefinition> = {
   },
 };
 
-async function handleToolCall(toolName: string, input: Record<string, unknown>): Promise<unknown> {
+async function handleToolCall(
+  toolName: string,
+  input: Record<string, unknown>,
+  stripeAccount?: string
+): Promise<unknown> {
+  const client = getStripeClient(stripeAccount);
+
   switch (toolName) {
     case 'list_customers': {
-      const customers = await stripe.customers.list({
+      const customers = await client.customers.list({
         limit: (input.limit as number) || 10,
         starting_after: input.starting_after as string,
       });
       return customers;
     }
     case 'get_customer': {
-      const customer = await stripe.customers.retrieve(input.customer_id as string);
+      const customer = await client.customers.retrieve(input.customer_id as string);
       return customer;
     }
     case 'create_customer': {
-      const customer = await stripe.customers.create({
+      const customer = await client.customers.create({
         email: input.email as string,
         name: input.name as string,
         description: input.description as string,
@@ -165,18 +184,18 @@ async function handleToolCall(toolName: string, input: Record<string, unknown>):
       return customer;
     }
     case 'list_charges': {
-      const charges = await stripe.charges.list({
+      const charges = await client.charges.list({
         limit: (input.limit as number) || 10,
         customer: input.customer as string,
       });
       return charges;
     }
     case 'get_charge': {
-      const charge = await stripe.charges.retrieve(input.charge_id as string);
+      const charge = await client.charges.retrieve(input.charge_id as string);
       return charge;
     }
     case 'create_payment_intent': {
-      const intent = await stripe.paymentIntents.create({
+      const intent = await client.paymentIntents.create({
         amount: input.amount as number,
         currency: input.currency as string,
         customer: input.customer as string,
@@ -185,18 +204,18 @@ async function handleToolCall(toolName: string, input: Record<string, unknown>):
       return intent;
     }
     case 'get_payment_intent': {
-      const intent = await stripe.paymentIntents.retrieve(input.payment_intent_id as string);
+      const intent = await client.paymentIntents.retrieve(input.payment_intent_id as string);
       return intent;
     }
     case 'list_invoices': {
-      const invoices = await stripe.invoices.list({
+      const invoices = await client.invoices.list({
         limit: (input.limit as number) || 10,
         customer: input.customer as string,
       });
       return invoices;
     }
     case 'get_invoice': {
-      const invoice = await stripe.invoices.retrieve(input.invoice_id as string);
+      const invoice = await client.invoices.retrieve(input.invoice_id as string);
       return invoice;
     }
     default:
@@ -221,7 +240,10 @@ function validateAuth(authHeader: string | undefined): boolean {
   return token === mpcApiKey;
 }
 
-async function handleRequest(request: JSONRPCRequest): Promise<JSONRPCResponse> {
+async function handleRequest(
+  request: JSONRPCRequest,
+  stripeAccount?: string
+): Promise<JSONRPCResponse> {
   try {
     switch (request.method) {
       case 'initialize':
@@ -262,7 +284,7 @@ async function handleRequest(request: JSONRPCRequest): Promise<JSONRPCResponse> 
           };
         }
         try {
-          const result = await handleToolCall(params.name, params.arguments || {});
+          const result = await handleToolCall(params.name, params.arguments || {}, stripeAccount);
           return {
             jsonrpc: '2.0',
             id: request.id,
@@ -337,7 +359,8 @@ const server = http.createServer(async (req, res) => {
   req.on('end', async () => {
     try {
       const request: JSONRPCRequest = JSON.parse(body);
-      const response = await handleRequest(request);
+      const stripeAccount = req.headers['stripe-account'] as string | undefined;
+      const response = await handleRequest(request, stripeAccount);
 
       res.writeHead(200);
       res.end(JSON.stringify(response));

@@ -39,12 +39,38 @@ Authorization: Bearer your_secure_api_key_here
 
 If `MCP_API_KEY` is not set, authentication is disabled and the server accepts all requests.
 
+### Multi-Account Support
+
+For Stripe Connect accounts, you can specify a connected account using the `Stripe-Account` header:
+
+```
+Stripe-Account: acct_xxxxxxxxx
+```
+
+This routes all API calls to the specified connected account.
+
 **Example with curl:**
 ```bash
 curl -X POST http://localhost:8000 \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer your_secure_api_key_here" \
-  -d '{"jsonrpc":"2.0","method":"list_tools","id":1}'
+  -H "Stripe-Account: acct_xxxxxxxxx" \
+  -d '{"jsonrpc":"2.0","method":"list_customers","id":1}'
+```
+
+**Claude Code Configuration:**
+```json
+{
+  "mcpServers": {
+    "stripe": {
+      "url": "http://localhost:8000",
+      "headers": {
+        "Authorization": "Bearer your_secure_api_key_here",
+        "Stripe-Account": "acct_xxxxxxxxx"
+      }
+    }
+  }
+}
 ```
 
 ## Running the Server
