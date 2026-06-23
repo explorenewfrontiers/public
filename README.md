@@ -24,6 +24,27 @@ Create a `.env` file with your Stripe API key:
 ```env
 STRIPE_API_KEY=sk_test_your_api_key_here
 PORT=8000
+MCP_API_KEY=your_secure_api_key_here
+```
+
+### Authentication
+
+**Bearer Token Authentication (Optional)**
+
+If you set `MCP_API_KEY` in your environment, the server will require Bearer token authentication. Clients must include an `Authorization` header:
+
+```
+Authorization: Bearer your_secure_api_key_here
+```
+
+If `MCP_API_KEY` is not set, authentication is disabled and the server accepts all requests.
+
+**Example with curl:**
+```bash
+curl -X POST http://localhost:8000 \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer your_secure_api_key_here" \
+  -d '{"jsonrpc":"2.0","method":"list_tools","id":1}'
 ```
 
 ## Running the Server

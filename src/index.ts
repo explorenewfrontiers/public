@@ -30,6 +30,8 @@ interface ToolDefinition {
 }
 
 const stripe = new Stripe(process.env.STRIPE_API_KEY || '');
+const mpcApiKey = process.env.MCP_API_KEY;
+const mpcAuthEnabled = mpcApiKey !== undefined;
 
 const tools: Record<string, ToolDefinition> = {
   'list_customers': {
@@ -202,6 +204,23 @@ async function handleToolCall(toolName: string, input: Record<string, unknown>):
   }
 }
 
+function validateAuth(authHeader: string | undefined): boolean {
+  if (!mpcAuthEnabled) {
+    return true;
+  }
+
+  if (!authHeader) {
+    return false;
+  }
+
+  const [scheme, token] = authHeader.split(' ');
+  if (scheme !== 'Bearer') {
+    return false;
+  }
+
+  return token === mpcApiKey;
+}
+
 async function handleRequest(request: JSONRPCRequest): Promise<JSONRPCResponse> {
   try {
     switch (request.method) {
@@ -287,9 +306,26 @@ async function handleRequest(request: JSONRPCRequest): Promise<JSONRPCResponse> 
 }
 
 const server = http.createServer(async (req, res) => {
+  res.setHeader('Content-Type', 'application/json');
+
   if (req.method !== 'POST') {
-    res.writeHead(405, { 'Content-Type': 'application/json' });
+    res.writeHead(405);
     res.end(JSON.stringify({ error: 'Method not allowed' }));
+    return;
+  }
+
+  // Check authentication if enabled
+  if (!validateAuth(req.headers.authorization as string | undefined)) {
+    res.writeHead(401);
+    res.end(
+      JSON.stringify({
+        jsonrpc: '2.0',
+        error: {
+          code: -32600,
+          message: 'Unauthorized: Missing or invalid Bearer token',
+        },
+      })
+    );
     return;
   }
 
@@ -303,10 +339,10 @@ const server = http.createServer(async (req, res) => {
       const request: JSONRPCRequest = JSON.parse(body);
       const response = await handleRequest(request);
 
-      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.writeHead(200);
       res.end(JSON.stringify(response));
     } catch (error) {
-      res.writeHead(400, { 'Content-Type': 'application/json' });
+      res.writeHead(400);
       res.end(
         JSON.stringify({
           jsonrpc: '2.0',
@@ -323,5 +359,6 @@ const server = http.createServer(async (req, res) => {
 const port = parseInt(process.env.PORT || '8000', 10);
 server.listen(port, () => {
   console.log(`Stripe MCP Server listening on port ${port}`);
-  console.log(`API Key configured: ${process.env.STRIPE_API_KEY ? 'yes' : 'no'}`);
+  console.log(`Stripe API Key configured: ${process.env.STRIPE_API_KEY ? 'yes' : 'no'}`);
+  console.log(`Authentication: ${mpcAuthEnabled ? 'enabled (Bearer token required)' : 'disabled'}`);
 });
