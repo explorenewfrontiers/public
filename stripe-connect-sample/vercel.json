@@ -1,0 +1,61 @@
+{
+  "version": 2,
+  "buildCommand": "npm run build",
+  "outputDirectory": "dist",
+  "env": {
+    "STRIPE_SECRET_KEY": {
+      "description": "Your Stripe secret API key",
+      "required": true
+    },
+    "STRIPE_PUBLISHABLE_KEY": {
+      "description": "Your Stripe publishable API key",
+      "required": true
+    },
+    "WEBHOOK_SECRET": {
+      "description": "Your Stripe webhook signing secret",
+      "required": true
+    },
+    "DOMAIN": {
+      "description": "Your production domain",
+      "required": true
+    },
+    "NODE_ENV": {
+      "default": "production"
+    },
+    "PORT": {
+      "default": "3000"
+    }
+  },
+  "functions": {
+    "api/**/*.ts": {
+      "memory": 1024,
+      "maxDuration": 60
+    }
+  },
+  "headers": [
+    {
+      "source": "/(.*)",
+      "headers": [
+        {
+          "key": "X-Content-Type-Options",
+          "value": "nosniff"
+        },
+        {
+          "key": "X-Frame-Options",
+          "value": "DENY"
+        },
+        {
+          "key": "X-XSS-Protection",
+          "value": "1; mode=block"
+        }
+      ]
+    }
+  ],
+  "redirects": [
+    {
+      "source": "/old-path",
+      "destination": "/",
+      "permanent": true
+    }
+  ]
+}

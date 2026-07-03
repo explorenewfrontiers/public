@@ -1,0 +1,18 @@
+version: '3.8'
+
+services:
+  stripe-connect-app:
+    build: .
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=production
+      - PORT=3000
+      - STRIPE_SECRET_KEY=${STRIPE_SECRET_KEY}
+      - STRIPE_PUBLISHABLE_KEY=${STRIPE_PUBLISHABLE_KEY}
+      - WEBHOOK_SECRET=${WEBHOOK_SECRET}
+      - DOMAIN=${DOMAIN:-http://localhost:3000}
+    restart: unless-stopped
+    volumes:
+      # Optional: Mount for development
+      - ./dist:/app/dist
