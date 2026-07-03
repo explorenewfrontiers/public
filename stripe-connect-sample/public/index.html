@@ -1,0 +1,823 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Stripe Connect Platform Sample</title>
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+
+      body {
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        min-height: 100vh;
+        padding: 20px;
+      }
+
+      .container {
+        max-width: 1000px;
+        margin: 0 auto;
+      }
+
+      header {
+        background: white;
+        padding: 40px;
+        border-radius: 10px;
+        margin-bottom: 30px;
+        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        text-align: center;
+      }
+
+      header h1 {
+        color: #333;
+        margin-bottom: 10px;
+        font-size: 2.5em;
+      }
+
+      header p {
+        color: #666;
+        font-size: 1.1em;
+      }
+
+      .content {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 20px;
+      }
+
+      .card {
+        background: white;
+        padding: 30px;
+        border-radius: 10px;
+        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+      }
+
+      .card h2 {
+        color: #333;
+        margin-bottom: 20px;
+        font-size: 1.5em;
+        border-bottom: 2px solid #667eea;
+        padding-bottom: 10px;
+      }
+
+      .form-group {
+        margin-bottom: 15px;
+      }
+
+      label {
+        display: block;
+        margin-bottom: 5px;
+        color: #333;
+        font-weight: 600;
+      }
+
+      input,
+      select {
+        width: 100%;
+        padding: 10px;
+        border: 1px solid #ddd;
+        border-radius: 5px;
+        font-size: 1em;
+      }
+
+      input:focus,
+      select:focus {
+        outline: none;
+        border-color: #667eea;
+        box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+      }
+
+      button {
+        width: 100%;
+        padding: 12px;
+        background: #667eea;
+        color: white;
+        border: none;
+        border-radius: 5px;
+        font-size: 1em;
+        font-weight: 600;
+        cursor: pointer;
+        transition: background 0.3s;
+      }
+
+      button:hover {
+        background: #5568d3;
+      }
+
+      button:disabled {
+        background: #ccc;
+        cursor: not-allowed;
+      }
+
+      .status {
+        margin-top: 20px;
+        padding: 15px;
+        background: #f5f5f5;
+        border-radius: 5px;
+        border-left: 4px solid #667eea;
+      }
+
+      .status h3 {
+        color: #333;
+        margin-bottom: 10px;
+      }
+
+      .status p {
+        color: #666;
+        margin-bottom: 5px;
+      }
+
+      .success {
+        color: #27ae60;
+        font-weight: 600;
+      }
+
+      .error {
+        color: #e74c3c;
+        font-weight: 600;
+      }
+
+      .loading {
+        display: inline-block;
+        width: 20px;
+        height: 20px;
+        border: 3px solid #f3f3f3;
+        border-top: 3px solid #667eea;
+        border-radius: 50%;
+        animation: spin 1s linear infinite;
+      }
+
+      @keyframes spin {
+        0% {
+          transform: rotate(0deg);
+        }
+        100% {
+          transform: rotate(360deg);
+        }
+      }
+
+      .account-id-display {
+        background: #f0f0f0;
+        padding: 10px;
+        border-radius: 5px;
+        margin-bottom: 15px;
+        word-break: break-all;
+        font-family: monospace;
+        font-size: 0.9em;
+      }
+
+      @media (max-width: 768px) {
+        .content {
+          grid-template-columns: 1fr;
+        }
+
+        header h1 {
+          font-size: 2em;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <header>
+        <h1>Stripe Connect Platform</h1>
+        <p>Create connected accounts, manage products, and process payments</p>
+      </header>
+
+      <div class="content">
+        <!-- ================================================================
+             SECTION 1: ACCOUNT CREATION AND ONBOARDING
+             ================================================================
+             This section handles creating new Stripe Connect accounts and
+             managing the onboarding process. Users must complete onboarding
+             to accept payments.
+             ================================================================ -->
+        <div class="card">
+          <h2>Step 1: Create Account</h2>
+
+          <!-- Form to create a new connected account -->
+          <form id="createAccountForm">
+            <div class="form-group">
+              <label for="displayName">Business Name</label>
+              <input
+                type="text"
+                id="displayName"
+                placeholder="e.g., John's Coffee Shop"
+                required
+              />
+            </div>
+
+            <div class="form-group">
+              <label for="contactEmail">Contact Email</label>
+              <input
+                type="email"
+                id="contactEmail"
+                placeholder="e.g., owner@example.com"
+                required
+              />
+            </div>
+
+            <button type="submit">Create Account</button>
+          </form>
+
+          <!-- Display created account information -->
+          <div id="accountCreated" style="display: none" class="status">
+            <h3>Account Created ✓</h3>
+            <p>Account ID:</p>
+            <div class="account-id-display" id="createdAccountId"></div>
+            <p>
+              Save this ID! You'll need it to manage this account.
+            </p>
+            <!-- Note: In production, use a proper user identifier (database ID)
+                 instead of the Stripe account ID in URLs. The account ID
+                 is sensitive and should be kept private. -->
+          </div>
+
+          <!-- Display errors -->
+          <div id="accountError" style="display: none" class="status">
+            <h3 class="error">Error</h3>
+            <p id="accountErrorMessage"></p>
+          </div>
+        </div>
+
+        <!-- ================================================================
+             SECTION 2: ONBOARDING AND STATUS CHECK
+             ================================================================
+             This section manages the onboarding flow. Users must complete
+             KYC verification and provide business information before they
+             can accept payments.
+             ================================================================ -->
+        <div class="card">
+          <h2>Step 2: Onboard Account</h2>
+
+          <!-- Form to check account status and generate onboarding link -->
+          <form id="onboardingForm">
+            <div class="form-group">
+              <label for="accountIdForOnboarding">Account ID</label>
+              <input
+                type="text"
+                id="accountIdForOnboarding"
+                placeholder="Paste the account ID from Step 1"
+                required
+              />
+            </div>
+
+            <button type="submit">Check Status & Get Onboarding Link</button>
+          </form>
+
+          <!-- Display account status -->
+          <div id="accountStatus" style="display: none" class="status">
+            <h3>Account Status</h3>
+
+            <!-- Onboarding completion status -->
+            <p>
+              Onboarding:
+              <span id="onboardingCompleteStatus"></span>
+            </p>
+
+            <!-- Payment processing readiness -->
+            <p>
+              Ready for Payments:
+              <span id="readyForPaymentsStatus"></span>
+            </p>
+
+            <!-- Requirements information -->
+            <div id="requirementsInfo" style="margin-top: 15px"></div>
+
+            <!-- Link to Stripe's onboarding UI -->
+            <div id="onboardingLinkContainer" style="margin-top: 15px"></div>
+          </div>
+
+          <!-- Display errors -->
+          <div id="onboardingError" style="display: none" class="status">
+            <h3 class="error">Error</h3>
+            <p id="onboardingErrorMessage"></p>
+          </div>
+        </div>
+
+        <!-- ================================================================
+             SECTION 3: PRODUCT CREATION
+             ================================================================
+             This section allows merchants to create products that will be
+             sold through the platform. Products are created on the
+             connected account.
+             ================================================================ -->
+        <div class="card">
+          <h2>Step 3: Create Products</h2>
+
+          <!-- Form to create a new product -->
+          <form id="createProductForm">
+            <div class="form-group">
+              <label for="productAccountId">Account ID</label>
+              <input
+                type="text"
+                id="productAccountId"
+                placeholder="Account ID"
+                required
+              />
+            </div>
+
+            <div class="form-group">
+              <label for="productName">Product Name</label>
+              <input
+                type="text"
+                id="productName"
+                placeholder="e.g., Premium Coffee Blend"
+                required
+              />
+            </div>
+
+            <div class="form-group">
+              <label for="productDescription">Description</label>
+              <input
+                type="text"
+                id="productDescription"
+                placeholder="Product description"
+              />
+            </div>
+
+            <div class="form-group">
+              <label for="productPrice">Price (in dollars)</label>
+              <input
+                type="number"
+                id="productPrice"
+                placeholder="9.99"
+                step="0.01"
+                min="0"
+                required
+              />
+            </div>
+
+            <div class="form-group">
+              <label for="productCurrency">Currency</label>
+              <select id="productCurrency">
+                <option value="usd">USD ($)</option>
+                <option value="eur">EUR (€)</option>
+                <option value="gbp">GBP (£)</option>
+              </select>
+            </div>
+
+            <button type="submit">Create Product</button>
+          </form>
+
+          <!-- Display created products -->
+          <div id="productCreated" style="display: none" class="status">
+            <h3 class="success">Product Created ✓</h3>
+            <p id="productCreatedInfo"></p>
+          </div>
+
+          <!-- Display errors -->
+          <div id="productError" style="display: none" class="status">
+            <h3 class="error">Error</h3>
+            <p id="productErrorMessage"></p>
+          </div>
+        </div>
+
+        <!-- ================================================================
+             SECTION 4: STOREFRONT / PRODUCT DISPLAY
+             ================================================================
+             This section displays all products for a connected account.
+             Customers can view products and make purchases.
+
+             Note: In production, use a proper customer-facing URL instead
+             of the account ID. The account ID should be looked up from
+             your database based on the merchant's user profile.
+             ================================================================ -->
+        <div class="card">
+          <h2>Step 4: View Storefront</h2>
+
+          <!-- Form to access the storefront -->
+          <form id="storefrontForm">
+            <div class="form-group">
+              <label for="storefrontAccountId">Account ID</label>
+              <input
+                type="text"
+                id="storefrontAccountId"
+                placeholder="Account ID"
+                required
+              />
+            </div>
+
+            <button type="submit">Open Storefront</button>
+          </form>
+
+          <!-- Note about URL structure -->
+          <div class="status" style="margin-top: 20px">
+            <h3>Note on Storefront URLs</h3>
+            <p style="margin-bottom: 10px">
+              In production, you should not expose Stripe account IDs in URLs.
+              Instead:
+            </p>
+            <ul style="margin-left: 20px; color: #666">
+              <li>Create merchant profiles with proper database IDs</li>
+              <li>Map those IDs to Stripe account IDs server-side</li>
+              <li>Use URLs like: /shops/merchant-name or /shops/user-id</li>
+            </ul>
+          </div>
+        </div>
+
+        <!-- ================================================================
+             SECTION 5: SUBSCRIPTION MANAGEMENT
+             ================================================================
+             This section handles subscription creation and billing portal
+             access for recurring revenue.
+             ================================================================ -->
+        <div class="card">
+          <h2>Step 5: Subscriptions</h2>
+
+          <!-- Form to manage subscriptions -->
+          <form id="subscriptionForm">
+            <div class="form-group">
+              <label for="subscriptionAccountId">Account ID</label>
+              <input
+                type="text"
+                id="subscriptionAccountId"
+                placeholder="Account ID"
+                required
+              />
+            </div>
+
+            <div class="form-group">
+              <label for="subscriptionPrice">
+                Price ID (from product creation)
+              </label>
+              <input
+                type="text"
+                id="subscriptionPrice"
+                placeholder="price_xxx"
+                required
+              />
+            </div>
+
+            <button type="submit">Create Subscription</button>
+          </form>
+
+          <!-- Billing portal access -->
+          <form id="billingPortalForm" style="margin-top: 20px">
+            <div class="form-group">
+              <label for="billingAccountId">Account ID</label>
+              <input
+                type="text"
+                id="billingAccountId"
+                placeholder="Account ID"
+                required
+              />
+            </div>
+
+            <button type="submit">Open Billing Portal</button>
+          </form>
+
+          <!-- Display messages -->
+          <div id="subscriptionMessage" style="display: none" class="status">
+            <h3 id="subscriptionTitle"></h3>
+            <p id="subscriptionContent"></p>
+          </div>
+        </div>
+
+        <!-- ================================================================
+             REFERENCE SECTION: API ENDPOINTS
+             ================================================================
+             This card documents all available API endpoints for reference.
+             ================================================================ -->
+        <div class="card">
+          <h2>API Reference</h2>
+          <div class="status">
+            <h3>Available Endpoints</h3>
+            <ul style="margin-left: 20px; color: #666">
+              <li><strong>POST /api/accounts</strong> - Create connected account</li>
+              <li>
+                <strong>POST /api/onboarding/link</strong> - Get onboarding link
+              </li>
+              <li>
+                <strong>GET /api/accounts/:accountId/status</strong> - Check account
+                status
+              </li>
+              <li><strong>POST /api/products</strong> - Create product</li>
+              <li><strong>GET /api/products/:accountId</strong> - List products</li>
+              <li><strong>POST /api/checkout</strong> - Create checkout session</li>
+              <li><strong>POST /api/subscriptions</strong> - Create subscription</li>
+              <li>
+                <strong>POST /api/billing-portal</strong> - Create billing portal
+                session
+              </li>
+            </ul>
+          </div>
+        </div>
+
+        <!-- ================================================================
+             WEBHOOK SETUP GUIDE
+             ================================================================
+             This card provides instructions for setting up webhooks.
+             ================================================================ -->
+        <div class="card">
+          <h2>Webhook Setup</h2>
+          <div class="status">
+            <h3>Configure Webhooks</h3>
+            <p style="margin-bottom: 10px">
+              Set up these event listeners in your Stripe Dashboard:
+            </p>
+            <ul style="margin-left: 20px; color: #666; margin-bottom: 10px">
+              <li>customer.subscription.updated</li>
+              <li>customer.subscription.deleted</li>
+              <li>invoice.payment_succeeded</li>
+              <li>v2.account[requirements].updated (thin events)</li>
+              <li>v2.account[configuration.merchant].capability_status_updated (thin)</li>
+            </ul>
+            <p style="margin-bottom: 10px">
+              <strong>Webhook URL:</strong>
+            </p>
+            <div class="account-id-display">/webhook and /webhook/thin</div>
+            <p style="margin-bottom: 10px">
+              <strong>Test with Stripe CLI:</strong>
+            </p>
+            <div class="account-id-display" style="font-size: 0.85em">
+              stripe listen --events customer.subscription.updated,customer.subscription.deleted,invoice.payment_succeeded
+              --forward-to localhost:3000/webhook
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ================================================================
+         CLIENT-SIDE JAVASCRIPT
+         ================================================================
+         This script handles all client-side interactions and API calls.
+         ================================================================ -->
+    <script>
+      // ================================================================
+      // UTILITY FUNCTIONS
+      // ================================================================
+
+      // Helper function to make API calls
+      async function apiCall(endpoint, method = 'GET', data = null) {
+        const options = {
+          method,
+          headers: {
+            'Content-Type': 'application/json',
+          },
+        };
+
+        if (data) {
+          options.body = JSON.stringify(data);
+        }
+
+        const response = await fetch(endpoint, options);
+        const result = await response.json();
+
+        if (!response.ok) {
+          throw new Error(result.error || 'API call failed');
+        }
+
+        return result;
+      }
+
+      // ================================================================
+      // SECTION 1: ACCOUNT CREATION
+      // ================================================================
+
+      document
+        .getElementById('createAccountForm')
+        .addEventListener('submit', async (e) => {
+          e.preventDefault();
+
+          const displayName = document.getElementById('displayName').value;
+          const contactEmail = document.getElementById('contactEmail').value;
+
+          try {
+            // Call the API to create a new account
+            const result = await apiCall('/api/accounts', 'POST', {
+              displayName,
+              contactEmail,
+            });
+
+            // Display the created account ID
+            document.getElementById('createdAccountId').textContent =
+              result.accountId;
+            document.getElementById('accountCreated').style.display = 'block';
+            document.getElementById('accountError').style.display = 'none';
+
+            // Clear the form
+            document.getElementById('createAccountForm').reset();
+
+            // Auto-populate the account ID in other sections
+            document.getElementById('accountIdForOnboarding').value =
+              result.accountId;
+            document.getElementById('productAccountId').value = result.accountId;
+            document.getElementById('storefrontAccountId').value =
+              result.accountId;
+          } catch (error) {
+            document.getElementById('accountErrorMessage').textContent =
+              error.message;
+            document.getElementById('accountError').style.display = 'block';
+            document.getElementById('accountCreated').style.display = 'none';
+          }
+        });
+
+      // ================================================================
+      // SECTION 2: ONBOARDING AND STATUS CHECK
+      // ================================================================
+
+      document
+        .getElementById('onboardingForm')
+        .addEventListener('submit', async (e) => {
+          e.preventDefault();
+
+          const accountId = document.getElementById(
+            'accountIdForOnboarding'
+          ).value;
+
+          try {
+            // Fetch the account status
+            const statusResult = await apiCall(
+              `/api/accounts/${accountId}/status`,
+              'GET'
+            );
+
+            // Display onboarding completion status
+            const onboardingStatus = statusResult.onboardingComplete
+              ? '<span class="success">✓ Complete</span>'
+              : '<span class="error">✗ Incomplete</span>';
+            document.getElementById('onboardingCompleteStatus').innerHTML =
+              onboardingStatus;
+
+            // Display payment readiness
+            const paymentStatus = statusResult.readyToProcessPayments
+              ? '<span class="success">✓ Ready</span>'
+              : '<span class="error">✗ Not Ready</span>';
+            document.getElementById('readyForPaymentsStatus').innerHTML =
+              paymentStatus;
+
+            // Display requirements information
+            let requirementsHTML = '';
+            if (statusResult.currentlyDueRequirements?.length > 0) {
+              requirementsHTML += '<p><strong>Currently Due:</strong></p>';
+              requirementsHTML += '<ul style="margin-left: 20px">';
+              statusResult.currentlyDueRequirements.forEach((req) => {
+                requirementsHTML += `<li>${req}</li>`;
+              });
+              requirementsHTML += '</ul>';
+            }
+            if (statusResult.pastDueRequirements?.length > 0) {
+              requirementsHTML += '<p><strong>Past Due:</strong></p>';
+              requirementsHTML += '<ul style="margin-left: 20px">';
+              statusResult.pastDueRequirements.forEach((req) => {
+                requirementsHTML += `<li>${req}</li>`;
+              });
+              requirementsHTML += '</ul>';
+            }
+            document.getElementById('requirementsInfo').innerHTML =
+              requirementsHTML;
+
+            // If not complete, get the onboarding link
+            if (!statusResult.onboardingComplete) {
+              const linkResult = await apiCall('/api/onboarding/link', 'POST', {
+                accountId,
+              });
+
+              document.getElementById('onboardingLinkContainer').innerHTML =
+                `<p><a href="${linkResult.url}" target="_blank" style="display: inline-block; padding: 10px 20px; background: #667eea; color: white; text-decoration: none; border-radius: 5px; font-weight: 600;">Complete Onboarding</a></p>`;
+            } else {
+              document.getElementById('onboardingLinkContainer').innerHTML =
+                '<p class="success">✓ Onboarding complete! This account is ready to accept payments.</p>';
+            }
+
+            document.getElementById('accountStatus').style.display = 'block';
+            document.getElementById('onboardingError').style.display = 'none';
+          } catch (error) {
+            document.getElementById('onboardingErrorMessage').textContent =
+              error.message;
+            document.getElementById('onboardingError').style.display = 'block';
+            document.getElementById('accountStatus').style.display = 'none';
+          }
+        });
+
+      // ================================================================
+      // SECTION 3: PRODUCT CREATION
+      // ================================================================
+
+      document
+        .getElementById('createProductForm')
+        .addEventListener('submit', async (e) => {
+          e.preventDefault();
+
+          const accountId = document.getElementById('productAccountId').value;
+          const name = document.getElementById('productName').value;
+          const description = document.getElementById('productDescription').value;
+          const price = document.getElementById('productPrice').value;
+          const currency = document.getElementById('productCurrency').value;
+
+          try {
+            // Create the product
+            const result = await apiCall('/api/products', 'POST', {
+              accountId,
+              name,
+              description,
+              priceInCents: Math.round(parseFloat(price) * 100),
+              currency,
+            });
+
+            // Display success message with product details
+            document.getElementById('productCreatedInfo').innerHTML =
+              `<strong>Product ID:</strong> ${result.product.id}<br>` +
+              `<strong>Name:</strong> ${result.product.name}<br>` +
+              `<strong>Price:</strong> ${(parseFloat(price)).toFixed(2)} ${currency.toUpperCase()}`;
+
+            document.getElementById('productCreated').style.display = 'block';
+            document.getElementById('productError').style.display = 'none';
+
+            // Clear form
+            document.getElementById('createProductForm').reset();
+          } catch (error) {
+            document.getElementById('productErrorMessage').textContent =
+              error.message;
+            document.getElementById('productError').style.display = 'block';
+            document.getElementById('productCreated').style.display = 'none';
+          }
+        });
+
+      // ================================================================
+      // SECTION 4: STOREFRONT
+      // ================================================================
+
+      document
+        .getElementById('storefrontForm')
+        .addEventListener('submit', async (e) => {
+          e.preventDefault();
+
+          const accountId = document.getElementById('storefrontAccountId').value;
+
+          // In production, you would route to a merchant-specific URL like /shops/:id
+          // This would look up the account ID from your database using the merchant ID
+          window.location.href = `/storefront.html?accountId=${accountId}`;
+        });
+
+      // ================================================================
+      // SECTION 5: SUBSCRIPTIONS
+      // ================================================================
+
+      document
+        .getElementById('subscriptionForm')
+        .addEventListener('submit', async (e) => {
+          e.preventDefault();
+
+          const accountId = document.getElementById('subscriptionAccountId').value;
+          const priceId = document.getElementById('subscriptionPrice').value;
+
+          try {
+            // Create the subscription
+            const result = await apiCall('/api/subscriptions', 'POST', {
+              accountId,
+              priceId,
+            });
+
+            // Redirect to Stripe checkout for subscription setup
+            // In a real application, you'd use Stripe.js to redirect
+            const response = await fetch('/get-session', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ sessionId: result.sessionId }),
+            });
+
+            const session = await response.json();
+            window.location.href = session.url;
+          } catch (error) {
+            document.getElementById('subscriptionTitle').textContent = 'Error';
+            document.getElementById('subscriptionContent').textContent =
+              error.message;
+            document.getElementById('subscriptionMessage').style.display =
+              'block';
+          }
+        });
+
+      // Billing portal form
+      document
+        .getElementById('billingPortalForm')
+        .addEventListener('submit', async (e) => {
+          e.preventDefault();
+
+          const accountId = document.getElementById('billingAccountId').value;
+
+          try {
+            // Get the billing portal session
+            const result = await apiCall('/api/billing-portal', 'POST', {
+              accountId,
+            });
+
+            // Redirect to the billing portal
+            window.location.href = result.url;
+          } catch (error) {
+            document.getElementById('subscriptionTitle').textContent = 'Error';
+            document.getElementById('subscriptionContent').textContent =
+              error.message;
+            document.getElementById('subscriptionMessage').style.display =
+              'block';
+          }
+        });
+    </script>
+  </body>
+</html>
