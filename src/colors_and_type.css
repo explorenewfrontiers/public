@@ -1,0 +1,292 @@
+/* =============================================================
+   Capital Frontier Travel — Colors & Type
+   Heritage sunset / national-park adventure travel
+   ============================================================= */
+
+/* ---------- Webfonts (Google Fonts — see README for substitutions) ---------- */
+@import url("https://fonts.googleapis.com/css2?family=Big+Shoulders+Display:wght@400;600;700;800&family=DM+Sans:wght@400;500;600;700&family=Lora:ital,wght@0,400;0,500;0,600;1,400;1,500&family=IBM+Plex+Mono:wght@400;500&display=swap");
+
+:root {
+  /* ---------- BRAND PALETTE ---------- */
+
+  /* Sunset gradient: the orange disc behind the peaks */
+  --sunset-gold:    #F9BB5E;   /* top of the sun, warm yellow-gold */
+  --sunset-orange:  #E87846;   /* heart of the sun, the brand orange */
+  --sunset-ember:   #C5552A;   /* deepest orange / pressed states */
+
+  /* Mountain teals: the snowy peaks */
+  --teal-mist:      #BCD8D3;   /* tints, washes */
+  --teal-sage:      #7BB8AE;   /* mid mountain */
+  --teal-pine:      #589F98;   /* primary mountain teal (logo) */
+  --teal-deep:      #3B6C73;   /* mountain shadow */
+
+  /* Navy / Slate: the deep teal background of the logo */
+  --navy-ridge:     #2D4A5B;   /* primary brand navy */
+  --navy-night:     #1B3036;   /* darkest, for type & overlays */
+  --navy-storm:     #44606E;   /* mid navy */
+
+  /* Cream / Sand: the beige body of the wordmark backdrop */
+  --cream-bone:     #FCF2E0;   /* lightest cream — primary "paper" */
+  --cream-canvas:   #F4ECDA;   /* warm cream — page bg */
+  --cream-sand:     #E8D9B6;   /* hairlines, dividers on cream */
+  --cream-dune:     #C9B68C;   /* secondary tan */
+
+  /* Slate-blues: the muted blue-grey of the wordmark on cream */
+  --slate-fog:      #B5C4CB;
+  --slate-blue:     #6A8794;
+  --slate-cobalt:   #4B6675;
+
+  /* ---------- SEMANTIC SURFACES (light / "paper") ---------- */
+  --bg:             var(--cream-bone);
+  --bg-sunken:      var(--cream-canvas);
+  --bg-raised:      #FFFFFF;
+  --surface-warm:   #F8EBCF;   /* call-out / banner background */
+  --surface-cool:   #E5EEEE;   /* alt panel on cream */
+
+  /* ---------- SEMANTIC SURFACES (dark / "night") ---------- */
+  --bg-dark:        var(--navy-ridge);
+  --bg-dark-sunken: var(--navy-night);
+  --bg-dark-raised: #34566A;
+
+  /* ---------- FOREGROUND / TEXT ---------- */
+  --fg1:            var(--navy-night);   /* primary text on cream */
+  --fg2:            var(--slate-cobalt); /* secondary text */
+  --fg3:            var(--slate-blue);   /* tertiary / meta */
+  --fg-muted:       #8FA1A8;
+  --fg-inverse:     var(--cream-bone);   /* text on navy */
+  --fg-inverse-2:   #C8D6DB;             /* secondary text on navy */
+
+  /* ---------- ACCENTS ---------- */
+  --accent:         var(--sunset-orange);
+  --accent-warm:    var(--sunset-gold);
+  --accent-cool:    var(--teal-pine);
+
+  /* ---------- BORDERS / LINES ---------- */
+  --border:         #E0CFA7;          /* hairline on cream */
+  --border-strong:  var(--cream-dune);
+  --border-dark:    #34566A;          /* hairline on navy */
+  --rule:           rgba(27, 48, 54, 0.18);
+
+  /* ---------- STATUS ---------- */
+  --positive:       #4F8A6F;   /* trip confirmed */
+  --positive-bg:    #DFEDE3;
+  --warning:        var(--sunset-gold);
+  --warning-bg:     #FBE7C4;
+  --danger:         #B84A35;
+  --danger-bg:      #F5DAD0;
+  --info:           var(--teal-deep);
+  --info-bg:        #DDE8E9;
+
+  /* ---------- SHADOWS / ELEVATION ----------
+     Warm-toned, soft — like late-afternoon sun on paper */
+  --shadow-xs:  0 1px 1px rgba(45, 74, 91, 0.06);
+  --shadow-sm:  0 2px 6px -2px rgba(45, 74, 91, 0.10),
+                0 1px 2px rgba(45, 74, 91, 0.06);
+  --shadow-md:  0 8px 24px -10px rgba(45, 74, 91, 0.20),
+                0 3px 8px -3px rgba(45, 74, 91, 0.08);
+  --shadow-lg:  0 24px 50px -16px rgba(45, 74, 91, 0.28),
+                0 6px 16px -6px rgba(45, 74, 91, 0.12);
+  --shadow-press: inset 0 1px 2px rgba(27, 48, 54, 0.20);
+  --shadow-stamp: 0 0 0 1px rgba(27, 48, 54, 0.30) inset,
+                  0 1px 0 rgba(255,255,255,0.5) inset;
+
+  /* ---------- RADII ----------
+     The brand reads "hand-stamped postcard" — radii stay small.
+     Pills used sparingly for tags/chips. */
+  --radius-xs: 2px;
+  --radius-sm: 4px;
+  --radius-md: 8px;
+  --radius-lg: 14px;
+  --radius-xl: 22px;
+  --radius-pill: 999px;
+
+  /* ---------- SPACING ----------
+     4px base scale */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --space-10: 40px;
+  --space-12: 48px;
+  --space-16: 64px;
+  --space-20: 80px;
+  --space-24: 96px;
+
+  /* ---------- MOTION ---------- */
+  --ease-out:   cubic-bezier(.22,.61,.36,1);
+  --ease-in-out: cubic-bezier(.7,0,.3,1);
+  --ease-stamp: cubic-bezier(.34,1.36,.64,1);   /* gentle settle */
+  --dur-fast:   140ms;
+  --dur-base:   220ms;
+  --dur-slow:   420ms;
+
+  /* ---------- TYPE FAMILIES ---------- */
+  --font-display: "Big Shoulders Display", "Saira Condensed", "Oswald", Impact, sans-serif;
+  --font-sans:    "DM Sans", "Helvetica Neue", system-ui, -apple-system, sans-serif;
+  --font-serif:   "Lora", "Source Serif Pro", Georgia, "Times New Roman", serif;
+  --font-mono:    "IBM Plex Mono", "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
+
+  /* ---------- TYPE SCALE ---------- */
+  --fz-12: 12px;
+  --fz-13: 13px;
+  --fz-14: 14px;
+  --fz-15: 15px;
+  --fz-16: 16px;
+  --fz-18: 18px;
+  --fz-20: 20px;
+  --fz-24: 24px;
+  --fz-28: 28px;
+  --fz-32: 32px;
+  --fz-40: 40px;
+  --fz-52: 52px;
+  --fz-72: 72px;
+  --fz-96: 96px;
+}
+
+/* ============================================================
+   SEMANTIC TYPE STYLES
+   ============================================================ */
+
+body, .cft-body {
+  font-family: var(--font-sans);
+  font-size: var(--fz-16);
+  line-height: 1.55;
+  color: var(--fg1);
+  background: var(--bg);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+/* Display — for hero/title moments. Vintage condensed, ALL CAPS. */
+.cft-display, h1.cft-display {
+  font-family: var(--font-display);
+  font-weight: 800;
+  font-size: clamp(56px, 8vw, 96px);
+  line-height: 0.92;
+  letter-spacing: 0.005em;
+  text-transform: uppercase;
+  color: var(--fg1);
+}
+
+/* Eyebrow — small all-caps label, often above headings. The "TRAVEL" treatment. */
+.cft-eyebrow {
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: var(--fz-13);
+  line-height: 1;
+  letter-spacing: 0.28em;
+  text-transform: uppercase;
+  color: var(--accent);
+}
+
+h1, .cft-h1 {
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: var(--fz-52);
+  line-height: 1.0;
+  letter-spacing: 0.01em;
+  text-transform: uppercase;
+  color: var(--fg1);
+  margin: 0 0 var(--space-4);
+}
+
+h2, .cft-h2 {
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: var(--fz-40);
+  line-height: 1.05;
+  letter-spacing: 0.01em;
+  text-transform: uppercase;
+  color: var(--fg1);
+  margin: 0 0 var(--space-3);
+}
+
+h3, .cft-h3 {
+  font-family: var(--font-serif);
+  font-weight: 500;
+  font-style: italic;
+  font-size: var(--fz-28);
+  line-height: 1.2;
+  color: var(--fg1);
+  margin: 0 0 var(--space-3);
+}
+
+h4, .cft-h4 {
+  font-family: var(--font-sans);
+  font-weight: 600;
+  font-size: var(--fz-20);
+  line-height: 1.3;
+  letter-spacing: -0.005em;
+  color: var(--fg1);
+  margin: 0 0 var(--space-2);
+}
+
+h5, .cft-h5 {
+  font-family: var(--font-sans);
+  font-weight: 600;
+  font-size: var(--fz-16);
+  line-height: 1.4;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: var(--fg2);
+  margin: 0 0 var(--space-2);
+}
+
+p, .cft-p {
+  font-family: var(--font-sans);
+  font-size: var(--fz-16);
+  line-height: 1.65;
+  color: var(--fg1);
+  text-wrap: pretty;
+  margin: 0 0 var(--space-4);
+}
+
+.cft-lead {
+  font-family: var(--font-serif);
+  font-size: var(--fz-20);
+  line-height: 1.55;
+  color: var(--fg2);
+  font-style: italic;
+  text-wrap: pretty;
+}
+
+.cft-meta, small, .cft-small {
+  font-family: var(--font-sans);
+  font-size: var(--fz-13);
+  line-height: 1.45;
+  color: var(--fg3);
+  letter-spacing: 0.005em;
+}
+
+.cft-caps {
+  font-family: var(--font-sans);
+  font-size: var(--fz-12);
+  font-weight: 600;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--fg2);
+}
+
+code, kbd, samp, pre, .cft-mono {
+  font-family: var(--font-mono);
+  font-size: 0.92em;
+  letter-spacing: 0;
+}
+
+a {
+  color: var(--accent);
+  text-decoration: none;
+  border-bottom: 1px solid color-mix(in oklab, var(--accent) 40%, transparent);
+  transition: color var(--dur-fast) var(--ease-out),
+              border-color var(--dur-fast) var(--ease-out);
+}
+a:hover { color: var(--sunset-ember); border-bottom-color: var(--sunset-ember); }
+
+hr, .cft-rule {
+  border: 0;
+  border-top: 1px solid var(--border);
+  margin: var(--space-8) 0;
+}

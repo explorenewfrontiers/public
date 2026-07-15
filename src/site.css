@@ -1,0 +1,172 @@
+/* Capital Frontier Travel — website UI kit local styles */
+@import url("./colors_and_type.css");
+
+* { box-sizing: border-box; }
+html, body { margin:0; padding:0; }
+body {
+  font-family: var(--font-sans);
+  background: var(--cream-bone);
+  color: var(--fg1);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ---- buttons ---- */
+.btn {
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 13px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  padding: 13px 22px;
+  border-radius: 4px;
+  border: 1px solid transparent;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  transition: background 140ms var(--ease-out), color 140ms, border-color 140ms, transform 140ms;
+  line-height: 1;
+}
+.btn:focus-visible { outline: 2px solid var(--sunset-orange); outline-offset: 2px; }
+.btn:active { transform: translateY(1px); box-shadow: var(--shadow-press); }
+.btn--primary { background: var(--sunset-orange); color: var(--cream-bone); }
+.btn--primary:hover { background: var(--sunset-ember); }
+.btn--secondary { background: transparent; color: var(--navy-night); border-color: var(--navy-night); }
+.btn--secondary:hover { background: var(--navy-night); color: var(--cream-bone); }
+.btn--ghost { background: transparent; color: var(--sunset-orange); border-color: transparent; padding: 6px 4px; }
+.btn--ghost:hover { color: var(--sunset-ember); }
+.btn--on-dark.btn--secondary { color: var(--cream-bone); border-color: var(--cream-bone); }
+.btn--on-dark.btn--secondary:hover { background: var(--cream-bone); color: var(--navy-night); }
+.btn--sm { font-size: 11px; padding: 9px 14px; letter-spacing: 0.18em; }
+
+/* ---- chips ---- */
+.chip {
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: 11px;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  padding: 5px 11px;
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  line-height: 1;
+}
+.chip--accent { background: var(--sunset-orange); color: var(--cream-bone); }
+.chip--teal { background: transparent; color: var(--teal-deep); border: 1px solid var(--teal-pine); }
+.chip--neutral { background: var(--cream-canvas); color: var(--slate-cobalt); border: 1px solid var(--cream-dune); }
+.chip--code { background: var(--navy-ridge); color: var(--cream-bone); font-family: var(--font-mono); letter-spacing: 0; padding: 5px 10px; }
+
+/* ---- containers ---- */
+.container { max-width: 1240px; margin: 0 auto; padding: 0 32px; }
+.container--narrow { max-width: 760px; }
+
+/* ---- eyebrow / arrow brackets ---- */
+.eyebrow {
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: 12px;
+  letter-spacing: 0.28em;
+  text-transform: uppercase;
+  color: var(--sunset-orange);
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+}
+.eyebrow svg { display:block; }
+
+/* ---- card ---- */
+.card {
+  background: #fff;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+  box-shadow: var(--shadow-sm);
+  transition: box-shadow 220ms var(--ease-out), transform 220ms var(--ease-out);
+}
+.card:hover { box-shadow: var(--shadow-md); }
+
+/* ---- focus / scroll ---- */
+:focus-visible { outline: 2px solid var(--sunset-orange); outline-offset: 2px; }
+
+/* ---- mini link ---- */
+.link-arrow {
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 12px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--sunset-orange);
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  border: none;
+  background: none;
+  cursor: pointer;
+  padding: 0;
+}
+.link-arrow:hover { color: var(--sunset-ember); }
+
+/* ---- nav links ---- */
+.nav-link {
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: 12px;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: inherit;
+  background: none;
+  border: none;
+  padding: 8px 2px;
+  cursor: pointer;
+  position: relative;
+}
+.nav-link[aria-current="page"]::after,
+.nav-link:hover::after {
+  content: "";
+  position: absolute;
+  left: 0; right: 0; bottom: 0;
+  height: 2px;
+  background: var(--sunset-orange);
+}
+
+/* ---- photo placeholder painted with CSS ---- */
+.photo {
+  position: relative;
+  overflow: hidden;
+  background: linear-gradient(170deg, #2D4A5B 0%, #3B6C73 55%, #E87846 110%);
+}
+.photo::before {
+  /* sun disc */
+  content: "";
+  position: absolute;
+  width: 60%; aspect-ratio: 1;
+  border-radius: 50%;
+  background: radial-gradient(circle at 50% 35%, #F9BB5E 0%, #E87846 80%);
+  left: 50%;
+  top: 18%;
+  transform: translateX(-50%);
+  opacity: 0.95;
+  filter: blur(1px);
+}
+.photo::after {
+  /* mountain silhouette */
+  content: "";
+  position: absolute;
+  left: 0; right: 0; bottom: 0;
+  height: 55%;
+  background:
+    url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 600 200' preserveAspectRatio='none'><path d='M0 200 L60 110 L120 150 L200 50 L260 110 L340 20 L420 90 L500 60 L600 130 L600 200 Z' fill='%231B3036' opacity='0.85'/><path d='M120 150 L200 50 L260 110 L210 130 Z' fill='%23589F98' opacity='0.7'/><path d='M340 20 L420 90 L370 110 Z' fill='%23589F98' opacity='0.6'/></svg>") no-repeat bottom / 100% 100%;
+}
+.photo--cool { background: linear-gradient(170deg, #1B3036 0%, #2D4A5B 55%, #589F98 110%); }
+.photo--warm { background: linear-gradient(170deg, #44606E 0%, #C5552A 60%, #F9BB5E 110%); }
+.photo--mist { background: linear-gradient(170deg, #44606E 0%, #6A8794 55%, #BCD8D3 110%); }
+
+/* ---- topographic contour pattern (used very sparingly) ---- */
+.topo-bg {
+  background-image:
+    radial-gradient(ellipse 200% 80% at 50% 0%, transparent 0%, transparent 50%, rgba(45,74,91,0.05) 50.5%, transparent 51%),
+    radial-gradient(ellipse 180% 70% at 50% 0%, transparent 0%, transparent 45%, rgba(45,74,91,0.05) 45.5%, transparent 46%),
+    radial-gradient(ellipse 160% 60% at 50% 0%, transparent 0%, transparent 40%, rgba(45,74,91,0.05) 40.5%, transparent 41%);
+}
