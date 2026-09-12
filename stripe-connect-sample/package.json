@@ -5,10 +5,10 @@
   "main": "dist/server.js",
   "type": "module",
   "scripts": {
-    "build": "tsc",
+    "build": "tsc -p tsconfig.build.json",
     "start": "node dist/server.js",
-    "dev": "ts-node src/server.ts",
-    "test": "node --test dist/**/*.test.js"
+    "dev": "ts-node --transpile-only server.ts",
+    "test": "tsc && node --test dist/connect-helpers.test.js"
   },
   "dependencies": {
     "express": "^4.18.2",

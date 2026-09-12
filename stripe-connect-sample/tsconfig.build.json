@@ -1,0 +1,8 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noCheck": true
+  },
+  "include": ["server.ts", "connect-helpers.ts"],
+  "exclude": ["node_modules", "dist", "public"]
+}

@@ -265,7 +265,7 @@
                   <div class="product-name">${product.name}</div>
                   <div class="product-description">${product.description || 'No description'}</div>
                   <div class="product-price">$${price}</div>
-                  <button class="buy-button" data-product-id="${product.id}" data-price-id="${product.priceId || ''}">
+                  <button class="buy-button" data-product-id="${product.id}" data-price-id="${product.priceId || product.default_price || ''}">
                     Buy Now
                   </button>
                 </div>
@@ -294,6 +294,11 @@
 
         async function handlePurchase(product) {
           try {
+            const priceId = product.priceId || product.default_price;
+            if (!priceId) {
+              throw new Error('Product is missing a price');
+            }
+
             // Call the API to create a checkout session
             // The application fee is handled server-side (10% in this example)
             const response = await fetch('/api/checkout', {
@@ -303,7 +308,7 @@
               },
               body: JSON.stringify({
                 accountId: accountId,
-                priceId: product.default_price, // Price ID from the product
+                priceId: priceId,
                 quantity: 1,
               }),
             });
@@ -314,21 +319,12 @@
 
             const data = await response.json();
 
-            // Get the Stripe publishable key
-            // TODO: In production, load this from the server configuration
-            const stripePublishableKey = 'pk_test_51234567890'; // Replace with your key
-
-            // Initialize Stripe
-            const stripe = Stripe(stripePublishableKey);
-
-            // Redirect to Stripe Checkout
-            const result = await stripe.redirectToCheckout({
-              sessionId: data.sessionId,
-            });
-
-            if (result.error) {
-              throw new Error(result.error.message);
+            if (!data.url) {
+              throw new Error('Checkout session did not return a URL');
             }
+
+            // Redirect to the hosted Checkout page (no publishable key required)
+            window.location.href = data.url;
           } catch (error) {
             alert('Error: ' + error.message);
           }

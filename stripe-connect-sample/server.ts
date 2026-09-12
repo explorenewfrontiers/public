@@ -2,6 +2,11 @@ import express from 'express';
 import Stripe from 'stripe';
 import bodyParser from 'body-parser';
 import dotenv from 'dotenv';
+import {
+  computeApplicationFeeCents,
+  isWebhookPath,
+  mapConnectedProduct,
+} from './connect-helpers.js';
 
 // Load environment variables from .env file
 dotenv.config();
@@ -37,8 +42,16 @@ const WEBHOOK_SECRET = process.env.WEBHOOK_SECRET;
 // ============================================================================
 // MIDDLEWARE SETUP
 // ============================================================================
-// Parse incoming JSON requests
-app.use(bodyParser.json());
+// Parse incoming JSON requests, except webhook routes. Stripe signature
+// verification requires the raw request body; a global JSON parser would
+// consume it first and make constructEvent / parseThinEvent fail.
+app.use((req, res, next) => {
+  if (isWebhookPath(req.originalUrl)) {
+    next();
+    return;
+  }
+  bodyParser.json()(req, res, next);
+});
 
 // Parse incoming form data
 app.use(bodyParser.urlencoded({ extended: true }));
@@ -311,14 +324,14 @@ app.get('/api/products/:accountId', async (req, res) => {
 
     res.json({
       success: true,
-      products: products.data.map((product) => ({
-        id: product.id,
-        name: product.name,
-        description: product.description,
-        // Get the price from the expanded default_price
-        price: (product.default_price as any)?.unit_amount || 0,
-        currency: (product.default_price as any)?.currency || 'usd',
-      })),
+      products: products.data.map((product) =>
+        mapConnectedProduct({
+          id: product.id,
+          name: product.name,
+          description: product.description,
+          default_price: product.default_price,
+        })
+      ),
     });
   } catch (error) {
     console.error('Error fetching products:', error);
@@ -344,6 +357,19 @@ app.post('/api/checkout', async (req, res) => {
       });
     }
 
+    const qty = quantity || 1;
+
+    // Look up the connected-account price so the platform fee is 10% of the
+    // actual charge. Using quantity alone (e.g. 1 * 0.1) rounds to 0 cents.
+    const price = await stripeClient.prices.retrieve(priceId, {
+      stripeAccount: accountId,
+    });
+    if (price.unit_amount == null) {
+      return res.status(400).json({
+        error: 'Price does not have a fixed unit amount',
+      });
+    }
+
     // Get the base URL for redirect URLs
     const baseUrl = process.env.DOMAIN || 'http://localhost:3000';
 
@@ -357,18 +383,17 @@ app.post('/api/checkout', async (req, res) => {
             // The price to charge the customer
             price: priceId,
             // Quantity of the product
-            quantity: quantity || 1,
+            quantity: qty,
           },
         ],
         // Set the payment mode (one-time payment)
         mode: 'payment',
         // Configure application fees (platform takes a cut)
         payment_intent_data: {
-          // Application fee amount in cents
-          // This is what the platform keeps (e.g., 100 = $1.00 or 10%)
-          application_fee_amount: Math.round(
-            (quantity || 1) *
-              0.1 // 10% fee - adjust as needed
+          // Application fee amount in cents (10% of unit_amount × quantity)
+          application_fee_amount: computeApplicationFeeCents(
+            price.unit_amount,
+            qty
           ),
         },
         // Redirect to success page after payment
@@ -385,6 +410,7 @@ app.post('/api/checkout', async (req, res) => {
     res.json({
       success: true,
       sessionId: session.id,
+      url: session.url,
     });
   } catch (error) {
     console.error('Error creating checkout session:', error);
