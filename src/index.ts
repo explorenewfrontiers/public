@@ -1,6 +1,10 @@
 import http from 'http';
+import path from 'path';
+import { fileURLToPath } from 'url';
 import Stripe from 'stripe';
 import { parseProductCatalog, syncProductsToStripe, getStripeProducts, getProductWithPrices } from './catalog.js';
+import { isAuthEnabled, validateAuth } from './auth.js';
+import { createStripeClientOptions } from './stripe-client.js';
 
 interface JSONRPCRequest {
   jsonrpc: '2.0';
@@ -32,22 +36,15 @@ interface ToolDefinition {
 
 const stripeApiKey = process.env.STRIPE_API_KEY || '';
 const mpcApiKey = process.env.MCP_API_KEY;
-const mpcAuthEnabled = mpcApiKey !== undefined;
+const mpcAuthEnabled = isAuthEnabled(mpcApiKey);
 
-function getStripeClient(stripeAccount?: string): Stripe {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const options: any = {
-    apiVersion: '2024-11-20',
-  };
+export { validateAuth, isAuthEnabled, createStripeClientOptions };
 
-  if (stripeAccount) {
-    options.stripeAccount = stripeAccount;
-  }
-
-  return new Stripe(stripeApiKey, options);
+export function getStripeClient(stripeAccount?: string, apiKey: string = stripeApiKey): Stripe {
+  return new Stripe(apiKey, createStripeClientOptions(stripeAccount));
 }
 
-const tools: Record<string, ToolDefinition> = {
+export const tools: Record<string, ToolDefinition> = {
   'list_customers': {
     name: 'list_customers',
     description: 'List all customers',
@@ -190,12 +187,12 @@ const tools: Record<string, ToolDefinition> = {
   },
 };
 
-async function handleToolCall(
+export async function handleToolCall(
   toolName: string,
   input: Record<string, unknown>,
-  stripeAccount?: string
+  stripeAccount?: string,
+  client: Stripe = getStripeClient(stripeAccount)
 ): Promise<unknown> {
-  const client = getStripeClient(stripeAccount);
 
   switch (toolName) {
     case 'list_customers': {
@@ -299,26 +296,10 @@ async function handleToolCall(
   }
 }
 
-function validateAuth(authHeader: string | undefined): boolean {
-  if (!mpcAuthEnabled) {
-    return true;
-  }
-
-  if (!authHeader) {
-    return false;
-  }
-
-  const [scheme, token] = authHeader.split(' ');
-  if (scheme !== 'Bearer') {
-    return false;
-  }
-
-  return token === mpcApiKey;
-}
-
-async function handleRequest(
+export async function handleRequest(
   request: JSONRPCRequest,
-  stripeAccount?: string
+  stripeAccount?: string,
+  client?: Stripe
 ): Promise<JSONRPCResponse> {
   try {
     switch (request.method) {
@@ -360,7 +341,12 @@ async function handleRequest(
           };
         }
         try {
-          const result = await handleToolCall(params.name, params.arguments || {}, stripeAccount);
+          const result = await handleToolCall(
+            params.name,
+            params.arguments || {},
+            stripeAccount,
+            client ?? getStripeClient(stripeAccount)
+          );
           return {
             jsonrpc: '2.0',
             id: request.id,
@@ -403,61 +389,81 @@ async function handleRequest(
   }
 }
 
-const server = http.createServer(async (req, res) => {
-  res.setHeader('Content-Type', 'application/json');
+export interface McpServerOptions {
+  apiKey?: string;
+  stripeClient?: Stripe;
+}
 
-  if (req.method !== 'POST') {
-    res.writeHead(405);
-    res.end(JSON.stringify({ error: 'Method not allowed' }));
-    return;
-  }
+export function createMcpServer(options: McpServerOptions = {}): http.Server {
+  const apiKey = 'apiKey' in options ? options.apiKey : process.env.MCP_API_KEY;
 
-  // Check authentication if enabled
-  if (!validateAuth(req.headers.authorization as string | undefined)) {
-    res.writeHead(401);
-    res.end(
-      JSON.stringify({
-        jsonrpc: '2.0',
-        error: {
-          code: -32600,
-          message: 'Unauthorized: Missing or invalid Bearer token',
-        },
-      })
-    );
-    return;
-  }
+  return http.createServer(async (req, res) => {
+    res.setHeader('Content-Type', 'application/json');
 
-  let body = '';
-  req.on('data', (chunk) => {
-    body += chunk.toString();
-  });
+    if (req.method !== 'POST') {
+      res.writeHead(405);
+      res.end(JSON.stringify({ error: 'Method not allowed' }));
+      return;
+    }
 
-  req.on('end', async () => {
-    try {
-      const request: JSONRPCRequest = JSON.parse(body);
-      const stripeAccount = req.headers['stripe-account'] as string | undefined;
-      const response = await handleRequest(request, stripeAccount);
-
-      res.writeHead(200);
-      res.end(JSON.stringify(response));
-    } catch (error) {
-      res.writeHead(400);
+    if (!validateAuth(req.headers.authorization as string | undefined, apiKey)) {
+      res.writeHead(401);
       res.end(
         JSON.stringify({
           jsonrpc: '2.0',
           error: {
-            code: -32700,
-            message: 'Parse error',
+            code: -32600,
+            message: 'Unauthorized: Missing or invalid Bearer token',
           },
         })
       );
+      return;
     }
-  });
-});
 
-const port = parseInt(process.env.PORT || '8000', 10);
-server.listen(port, () => {
-  console.log(`Stripe MCP Server listening on port ${port}`);
-  console.log(`Stripe API Key configured: ${process.env.STRIPE_API_KEY ? 'yes' : 'no'}`);
-  console.log(`Authentication: ${mpcAuthEnabled ? 'enabled (Bearer token required)' : 'disabled'}`);
-});
+    let body = '';
+    req.on('data', (chunk) => {
+      body += chunk.toString();
+    });
+
+    req.on('end', async () => {
+      try {
+        const request: JSONRPCRequest = JSON.parse(body);
+        const stripeAccount = req.headers['stripe-account'] as string | undefined;
+        const response = await handleRequest(request, stripeAccount, options.stripeClient);
+
+        res.writeHead(200);
+        res.end(JSON.stringify(response));
+      } catch (error) {
+        res.writeHead(400);
+        res.end(
+          JSON.stringify({
+            jsonrpc: '2.0',
+            error: {
+              code: -32700,
+              message: 'Parse error',
+            },
+          })
+        );
+      }
+    });
+  });
+}
+
+function isMainModule(): boolean {
+  const entry = process.argv[1];
+  if (!entry) {
+    return false;
+  }
+  return fileURLToPath(import.meta.url) === path.resolve(entry);
+}
+
+const server = createMcpServer();
+
+if (isMainModule()) {
+  const port = parseInt(process.env.PORT || '8000', 10);
+  server.listen(port, () => {
+    console.log(`Stripe MCP Server listening on port ${port}`);
+    console.log(`Stripe API Key configured: ${process.env.STRIPE_API_KEY ? 'yes' : 'no'}`);
+    console.log(`Authentication: ${mpcAuthEnabled ? 'enabled (Bearer token required)' : 'disabled'}`);
+  });
+}
