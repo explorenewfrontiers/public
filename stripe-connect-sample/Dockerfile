@@ -7,11 +7,11 @@ WORKDIR /app
 COPY package*.json ./
 
 # Install dependencies
-RUN npm ci
+RUN npm install
 
 # Copy source code
-COPY src ./src
-COPY tsconfig.json ./
+COPY server.ts connect-helpers.ts tsconfig.json tsconfig.build.json ./
+COPY public ./public
 
 # Build TypeScript
 RUN npm run build
@@ -23,7 +23,7 @@ WORKDIR /app
 
 # Install production dependencies only
 COPY package*.json ./
-RUN npm ci --only=production
+RUN npm install --only=production
 
 # Copy built application from builder stage
 COPY --from=builder /app/dist ./dist
