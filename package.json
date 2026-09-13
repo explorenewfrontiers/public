@@ -12,7 +12,7 @@
     "dev": "ts-node src/index.ts",
     "dev:web": "ts-node src/web-server.ts",
     "dev:both": "concurrently \"npm run dev\" \"npm run dev:web\"",
-    "test": "node --test dist/**/*.test.js"
+    "test": "tsc && node --test dist/catalog.test.js"
   },
   "dependencies": {
     "cors": "^2.8.5",

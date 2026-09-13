@@ -290,8 +290,10 @@ async function handleToolCall(
       return {
         created_count: result.created.length,
         updated_count: result.updated.length,
+        error_count: result.errors.length,
         created: result.created.map((p) => ({ id: p.id, name: p.name })),
         updated: result.updated.map((p) => ({ id: p.id, name: p.name })),
+        errors: result.errors,
       };
     }
     default:
