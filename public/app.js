@@ -1,6 +1,14 @@
-const stripe = Stripe(window.STRIPE_KEY || ''); // Will be injected by the server
 let products = [];
 let cart = [];
+
+function escapeHtml(value) {
+  return String(value)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
 
 const productsContainer = document.getElementById('productsContainer');
 const cartItemsContainer = document.getElementById('cartItems');
@@ -33,17 +41,17 @@ function renderProducts(productsToShow) {
   productsContainer.innerHTML = productsToShow
     .map(
       (product) => `
-    <div class="product-card" onclick="showProductDetails('${product.id}')">
+    <div class="product-card" data-product-id="${escapeHtml(product.id)}" onclick="showProductDetails('${escapeHtml(product.id)}')">
       ${
         product.images && product.images.length > 0
-          ? `<img src="${product.images[0]}" alt="${product.name}" class="product-image">`
+          ? `<img src="${escapeHtml(product.images[0])}" alt="${escapeHtml(product.name)}" class="product-image">`
           : `<div class="product-image">📦</div>`
       }
       <div class="product-info">
-        <div class="product-name">${product.name}</div>
-        <div class="product-description">${product.description || 'No description'}</div>
-        <div class="product-price" id="price-${product.id}">Loading...</div>
-        <button class="add-to-cart-btn" onclick="quickAddToCart(event, '${product.id}')">Add to Cart</button>
+        <div class="product-name">${escapeHtml(product.name)}</div>
+        <div class="product-description">${escapeHtml(product.description || 'No description')}</div>
+        <div class="product-price" id="price-${escapeHtml(product.id)}">Loading...</div>
+        <button class="add-to-cart-btn" onclick="quickAddToCart(event, '${escapeHtml(product.id)}')">Add to Cart</button>
       </div>
     </div>
   `
@@ -82,14 +90,21 @@ async function showProductDetails(productId) {
     modalBody.innerHTML = `
       ${
         product.images && product.images.length > 0
-          ? `<img src="${product.images[0]}" alt="${product.name}">`
+          ? `<img src="${escapeHtml(product.images[0])}" alt="${escapeHtml(product.name)}">`
           : `<div style="background: #f5f5f5; height: 300px; display: flex; align-items: center; justify-content: center; font-size: 3em; border-radius: 5px;">📦</div>`
       }
-      <h2>${product.name}</h2>
-      <p>${product.description || 'No description available'}</p>
+      <h2>${escapeHtml(product.name)}</h2>
+      <p>${escapeHtml(product.description || 'No description available')}</p>
       <div class="modal-price">$${amount}</div>
-      <button class="add-to-cart-btn" onclick="addToCart('${productId}', '${price.id}', '${product.name}', ${price.unit_amount})">Add to Cart</button>
+      <button class="add-to-cart-btn" ${price ? '' : 'disabled'}>${price ? 'Add to Cart' : 'Unavailable'}</button>
     `;
+
+    const addButton = modalBody.querySelector('.add-to-cart-btn');
+    if (price && addButton) {
+      addButton.addEventListener('click', () => {
+        addToCart(productId, price.id, product.name, price.unit_amount);
+      });
+    }
 
     modal.style.display = 'block';
   } catch (error) {
@@ -187,15 +202,15 @@ async function checkout() {
 
     const data = await response.json();
 
-    if (data.sessionId) {
-      // Redirect to Stripe checkout
-      const result = await stripe.redirectToCheckout({ sessionId: data.sessionId });
-      if (result.error) {
-        alert('Error: ' + result.error.message);
-        checkoutBtn.disabled = false;
-        checkoutBtn.textContent = 'Checkout';
-      }
+    if (!response.ok) {
+      throw new Error(data.error || 'Failed to create checkout session');
     }
+
+    if (!data.url) {
+      throw new Error('Checkout session did not return a redirect URL');
+    }
+
+    window.location.href = data.url;
   } catch (error) {
     console.error('Checkout error:', error);
     alert('Error during checkout');
