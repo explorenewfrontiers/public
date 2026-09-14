@@ -4,11 +4,13 @@ Use this checklist before deploying to production.
 
 ## Pre-Deployment ✓
 
+- [ ] Layout is deployable: either `server.ts` lives at `src/server.ts`, or `tsconfig.json`, npm scripts, `Dockerfile`, and `Procfile` point at the root file
+- [ ] Confirmed a local start works (`npx ts-node ... server.ts` today; `npm run build` / `npm start` / `npm run dev` do not)
 - [ ] Code is committed and pushed to `main` branch
-- [ ] All tests pass locally: `npm run build`
 - [ ] No console errors in local testing
 - [ ] `.env` file is NOT committed (only `.env.example`)
 - [ ] Dependencies are up to date: `npm install`
+- [ ] If using GitHub Actions, workflow file is at repo-root `.github/workflows/` (the copy under `stripe-connect-sample/.github/` is ignored)
 
 ## Stripe Setup ✓
 
@@ -21,13 +23,15 @@ Use this checklist before deploying to production.
 ### Webhooks
 - [ ] Created webhook endpoint for standard events
   - [ ] URL set to production domain + `/webhook`
-  - [ ] Events: `checkout.session.completed`, `checkout.session.async_payment_failed`
-  - [ ] Have signing secret: `whsec_...`
+  - [ ] Events actually handled: `customer.subscription.updated`, `customer.subscription.deleted`, `invoice.payment_succeeded`
+  - [ ] Have signing secret: `whsec_...` in `WEBHOOK_SECRET`
 - [ ] Created webhook endpoint for V2 events
   - [ ] URL set to production domain + `/webhook/thin`
   - [ ] Payload style: "Thin"
   - [ ] Events from: "Connected accounts"
-  - [ ] Have signing secret
+  - [ ] Events actually handled: `v2.core.account[requirements].updated`, `v2.core.account[configuration.merchant].capability_status_updated`
+  - [ ] Same `WEBHOOK_SECRET` is used for both routes unless you add a second env var
+- [ ] Aware that `bodyParser.json()` is global — signature verification needs the raw body
 
 ## Platform Selection ✓
 
@@ -42,9 +46,9 @@ Choose ONE:
 - [ ] **Docker** - For any cloud provider
   - [ ] Docker Hub account (if pushing images)
   - [ ] Cloud provider account (AWS/GCP/etc.)
-- [ ] **Vercel** - Serverless (requires refactoring)
+- [ ] **Vercel** - Not drop-in (vercel.json is a stub; no `api/` functions)
   - [ ] Have Vercel account
-  - [ ] Read Vercel limitations section
+  - [ ] Read Vercel limitations section in `DEPLOYMENT.md`
 
 ## Environment Variables ✓
 

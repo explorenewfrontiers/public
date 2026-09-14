@@ -33,14 +33,14 @@ PORT=3000
 # Install dependencies
 npm install
 
-# Build TypeScript
-npm run build
-
-# Start the server
-npm start
+# Source is server.ts (not src/server.ts). npm run build / npm start / npm run
+# dev currently target a missing src/ tree — do not use them yet.
+npx ts-node --compiler-options '{"module":"ES2020","moduleResolution":"node"}' server.ts
 ```
 
 Visit: http://localhost:3000
+
+`server.ts` loads `.env` via `dotenv`. The process exits immediately if `STRIPE_SECRET_KEY` is missing.
 
 ## Step 4: Test the Flow (5 minutes)
 
@@ -105,9 +105,14 @@ All code has detailed comments explaining:
 - **TODO** sections for customization
 
 Start with these files:
-1. `src/server.ts` - All API endpoints with detailed comments
+1. `server.ts` - All API endpoints with detailed comments
 2. `public/index.html` - Admin UI with form examples
 3. `public/storefront.html` - Customer UI with checkout
+
+Known UI gaps (verified against the handlers):
+- Storefront Buy Now sends `product.default_price`, but `GET /api/products/:accountId` does not return a price ID
+- Storefront Stripe.js key is hardcoded (`pk_test_51234567890`), not `STRIPE_PUBLISHABLE_KEY`
+- Subscription form POSTs `/get-session`, which is not implemented — billing portal (`url`) works
 
 ## Common Questions
 
@@ -118,13 +123,10 @@ A: Go to Dashboard > Developers > Webhooks. Create an endpoint first, then copy 
 A: Yes, after testing with test keys, you can switch to live keys. But test first!
 
 **Q: How do I charge a specific percentage?**
-A: Edit the application fee in `server.ts` checkout endpoint:
-```typescript
-application_fee_amount: Math.round(price * 0.10)  // 10%
-```
+A: The live checkout formula is `Math.round((quantity || 1) * 0.1)` cents (about `$0.00` per item), not 10% of price. To take 10% of the charge, compute `Math.round(unitAmount * quantity * 0.10)` in `POST /api/checkout`.
 
 **Q: How do I store accounts in a database?**
-A: Look for TODO comments in `server.ts` - they show where to add database calls.
+A: Look for TODO comments in `server.ts` — they show where to add database calls.
 
 **Q: Can I customize the styling?**
 A: Yes! Edit the `<style>` sections in the HTML files.

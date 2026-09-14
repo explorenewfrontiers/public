@@ -74,30 +74,32 @@ DOMAIN=http://localhost:3000
 3. Copy your **Publishable Key** (pk_test_...)
 4. Add them to your `.env` file
 
-### 4. Build and Run
+### 4. Run the server
+
+The Express app lives at `server.ts` in this directory (not `src/server.ts`). `package.json` scripts and `tsconfig.json` still point at `src/`:
+
+| Command | What actually happens |
+|---|---|
+| `npm run build` | `tsc` with `"include": ["src/**/*"]` — no files compile; `dist/server.js` is not produced. |
+| `npm start` | `node dist/server.js` — fails until a matching `dist/` exists. |
+| `npm run dev` | `ts-node src/server.ts` — file does not exist. |
+
+Working local command (loads `.env` via `dotenv` in `server.ts`):
 
 ```bash
-# Build TypeScript
-npm run build
-
-# Start the server
-npm start
+npx ts-node --compiler-options '{"module":"ES2020","moduleResolution":"node"}' server.ts
 ```
 
-Or for development with auto-reload:
+The process listens on `PORT` (default `3000`) and logs webhook paths `/webhook` and `/webhook/thin`.
 
-```bash
-npm run dev
-```
-
-The application will be available at `http://localhost:3000`
+Until `tsconfig.json` `rootDir`/`include` and the npm scripts are pointed at `server.ts`, treat `npm run build` / `npm start` / `npm run dev` as broken. The Docker image and Heroku `Procfile` (`npm run build && npm start`) have the same layout assumption.
 
 ## API Endpoints
 
 ### Account Management
 
 **POST /api/accounts**
-Create a new Stripe Connect account
+Create a new Stripe Connect account (V2). Required body: `displayName`, `contactEmail`. Response: `{ success, accountId, displayName }`.
 ```json
 {
   "displayName": "Business Name",
@@ -106,15 +108,22 @@ Create a new Stripe Connect account
 ```
 
 **POST /api/onboarding/link**
-Generate an onboarding link for KYC
+Generate an onboarding link for KYC. Returns `{ success, url }`.
 ```json
 {
   "accountId": "acct_1234567890"
 }
 ```
 
+Redirects use `DOMAIN` (default `http://localhost:3000`):
+
+- refresh: `${DOMAIN}/onboarding?accountId=...`
+- return: `${DOMAIN}/dashboard?accountId=...`
+
+There are no `/onboarding` or `/dashboard` routes (only `GET /` and static `public/`). After onboarding, those URLs 404 unless you add pages. Checkout success/cancel similarly target `/success`, `/storefront`, and `/subscription-success` — only `storefront.html` exists (`/storefront` without `.html` is not served by `express.static`).
+
 **GET /api/accounts/:accountId/status**
-Check account onboarding status and requirements
+Retrieves the V2 account with `configuration.merchant`, `configuration.customer`, and `requirements`. Response includes `onboardingComplete` (true unless requirements summary status is `currently_due` or `past_due`), `readyToProcessPayments` (`card_payments.status === "active"`), `requirementsStatus`, `currentlyDueRequirements`, and `pastDueRequirements`.
 
 ### Products
 
@@ -136,7 +145,7 @@ List all products for a connected account
 ### Checkout & Payments
 
 **POST /api/checkout**
-Create a checkout session for a one-time payment
+Create a Checkout Session on the connected account (`stripeAccount: accountId`). Returns `{ success, sessionId }` — not a hosted URL. The storefront is expected to call Stripe.js `redirectToCheckout({ sessionId })`.
 ```json
 {
   "accountId": "acct_1234567890",
@@ -145,10 +154,12 @@ Create a checkout session for a one-time payment
 }
 ```
 
+Required: `accountId`, `priceId`. `GET /api/products/:accountId` returns `id`, `name`, `description`, `price` (unit amount), and `currency`. It does **not** return `priceId` or `default_price`. The storefront currently sends `product.default_price`, so Buy Now will fail unless you pass a real `price_...` ID from product creation (`default_price` on the create response).
+
 ### Subscriptions
 
 **POST /api/subscriptions**
-Create a subscription checkout session
+Create a subscription Checkout Session (`mode: "subscription"`, `customer_account: accountId`). Returns `{ success, sessionId }`.
 ```json
 {
   "accountId": "acct_1234567890",
@@ -156,8 +167,10 @@ Create a subscription checkout session
 }
 ```
 
+The admin UI then POSTs to `/get-session` to resolve a hosted URL. **That route is not implemented** in `server.ts`. Use the `sessionId` with Stripe.js, or add a route that retrieves the session.
+
 **POST /api/billing-portal**
-Create a billing portal session for subscription management
+Create a billing portal session. Returns `{ success, url }` — the UI redirects to `url`.
 ```json
 {
   "accountId": "acct_1234567890"
@@ -171,21 +184,26 @@ Create a billing portal session for subscription management
 1. Go to Stripe Dashboard > Developers > Webhooks
 2. Click "+ Add endpoint"
 3. Enter URL: `https://yourdomain.com/webhook`
-4. Select events:
+4. Select the events the handler switches on:
    - `customer.subscription.updated`
    - `customer.subscription.deleted`
    - `invoice.payment_succeeded`
 5. Copy the signing secret and add to `.env` as `WEBHOOK_SECRET`
+
+Both `/webhook` and `/webhook/thin` verify with the same `WEBHOOK_SECRET`. Two Dashboard endpoints have two secrets; this sample only reads one env var.
+
+`bodyParser.json()` is registered globally before the webhook routes. Stripe signature verification needs the raw body. If verification fails even with a correct secret, this middleware order is the first thing to check. The route-level `express.raw({ type: 'application/json' })` does not undo a body that was already parsed.
 
 ### V2 Thin Webhooks (for account requirements)
 
 1. Add another endpoint: `https://yourdomain.com/webhook/thin`
 2. Select "Connected accounts" in "Events from"
 3. Choose "Thin" in "Payload style"
-4. Select V2 events:
-   - `v2.account[requirements].updated`
-   - `v2.account[configuration.merchant].capability_status_updated`
-   - `v2.account[configuration.customer].capability_status_updated`
+4. Select the V2 events the handler switches on:
+   - `v2.core.account[requirements].updated`
+   - `v2.core.account[configuration.merchant].capability_status_updated`
+
+The handler does not have a case for `v2.core.account[configuration.customer].capability_status_updated` (it logs `Unhandled V2 event type`). After verifying the thin event, the code fetches the full object with `stripeClient.v2.core.events.retrieve(thinEvent.id)`.
 
 ### Local Testing with Stripe CLI
 
@@ -201,15 +219,19 @@ stripe listen --thin-events 'v2.core.account[requirements].updated,v2.core.accou
 
 ```
 stripe-connect-sample/
-├── src/
-│   └── server.ts          # Main server with all API endpoints
+├── server.ts                 # All API endpoints (source of truth)
 ├── public/
-│   ├── index.html         # Admin dashboard and account management UI
-│   └── storefront.html    # Customer-facing product listing and checkout
-├── package.json           # Dependencies
-├── .env.example           # Environment variables template
-├── tsconfig.json          # TypeScript configuration
-└── README.md              # This file
+│   ├── index.html            # Admin dashboard
+│   └── storefront.html       # Customer storefront
+├── package.json              # Scripts still reference src/ and dist/
+├── tsconfig.json             # include/rootDir are src/**
+├── Dockerfile                # Multi-stage build copies src/ (missing)
+├── docker-compose.yml
+├── Procfile                  # Heroku: npm run build && npm start
+├── vercel.json               # Stub; no api/ serverless functions exist
+├── .github/workflows/deploy.yml  # Nested; GitHub Actions does not load this
+├── .env.example
+└── README.md
 ```
 
 ## Code Comments
@@ -244,15 +266,31 @@ Look for these sections:
 
 ### Application Fees
 
-This sample takes a 10% application fee on each transaction:
+`POST /api/checkout` sets:
 
 ```typescript
 application_fee_amount: Math.round(
-  (quantity || 1) * 0.1 // 10% fee
+  (quantity || 1) * 0.1
 )
 ```
 
-Adjust this percentage as needed in the checkout endpoint.
+That is `0.1` **cents** per item, not 10% of the price. `Math.round(0.1)` is `0`, so a quantity of `1` sends a `$0.00` application fee. Comments and older docs described a 10% cut. To take 10% of the charge, multiply the price unit amount by quantity, then take 10% of that result.
+
+### Account creation defaults
+
+`POST /api/accounts` hardcodes:
+
+- `identity.country: "us"`
+- `dashboard: "full"`
+- `defaults.responsibilities.fees_collector` / `losses_collector`: `"stripe"`
+- `configuration.merchant.capabilities.card_payments.requested: true`
+- empty `configuration.customer`
+
+There is no request field to change country or capabilities.
+
+### Product list limit
+
+`GET /api/products/:accountId` lists at most **20** active products and expands `data.default_price`, but the JSON response only exposes `price` / `currency` (not the price ID).
 
 ### Stripe Account vs Stripe Customer
 
@@ -307,12 +345,7 @@ Or in the Stripe Dashboard > Developers > Webhooks, click the endpoint and see r
 
 ### Change Application Fee
 
-Edit the fee in `server.ts`:
-```typescript
-application_fee_amount: Math.round(
-  (quantity || 1) * 0.15  // 15% fee instead of 10%
-)
-```
+Edit `POST /api/checkout` in `server.ts`. Using `quantity * 0.15` still produces a fraction of a cent, not 15% of the price. Base the fee on `unit_amount * quantity`.
 
 ### Change Currency
 
@@ -336,20 +369,32 @@ Edit `public/index.html` and `public/storefront.html` CSS sections to match your
 ### "STRIPE_SECRET_KEY is not set"
 - Copy `.env.example` to `.env`
 - Add your keys from https://dashboard.stripe.com/apikeys
+- The process throws at import time if this var is missing (`server.ts` uses `dotenv`)
+
+### `npm run build` / `npm start` / `npm run dev` fail
+- Source file is `server.ts`; scripts and `tsconfig.json` expect `src/server.ts`
+- Use the `ts-node` command in [Build and Run](#4-run-the-server)
 
 ### "Webhook signature verification failed"
-- Make sure `WEBHOOK_SECRET` is correct
+- Confirm `WEBHOOK_SECRET` matches the endpoint you are hitting
+- Both webhook routes share one secret
+- Global `bodyParser.json()` may have already parsed the body — Stripe needs the raw payload
 - Use Stripe CLI for local testing
-- For production, ensure SSL/TLS is enabled
 
 ### "Account not ready for payments"
 - User needs to complete onboarding at the link
-- Check requirements in the account status section
+- `readyToProcessPayments` is true only when `configuration.merchant.capabilities.card_payments.status === "active"`
 
 ### Checkout not redirecting
-- Ensure `STRIPE_PUBLISHABLE_KEY` is correct
-- Check browser console for errors
-- Make sure domain matches Stripe URL settings
+- `storefront.html` hardcodes `pk_test_51234567890` — replace it; `STRIPE_PUBLISHABLE_KEY` is not served to the browser
+- List endpoint does not return a price ID; Buy Now sends `product.default_price`, which is undefined
+- Checkout API returns `sessionId`, not a URL
+- Subscription UI calls missing `/get-session`
+
+### Docker / CI will not start
+- `Dockerfile` `COPY src ./src` fails because `src/` is absent
+- Nested `.github/workflows/deploy.yml` is not a repository workflow GitHub will run
+- `vercel.json` points at `api/**/*.ts` and `outputDirectory: dist`; this is still an Express app
 
 ## Learning Resources
 
