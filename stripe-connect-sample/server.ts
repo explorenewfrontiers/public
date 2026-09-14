@@ -2,6 +2,15 @@ import express from 'express';
 import Stripe from 'stripe';
 import bodyParser from 'body-parser';
 import dotenv from 'dotenv';
+import {
+  buildAccountOnboardingLinkParams,
+  buildExpressAccountCreateParams,
+  mapAccountStatus,
+} from './connect-account-helpers.js';
+import {
+  buildSubscriptionCheckoutSession,
+  isRecurringPrice,
+} from './subscription-helpers.js';
 
 // Load environment variables from .env file
 dotenv.config();
@@ -54,8 +63,8 @@ app.use(express.static('public'));
 // 1. ACCOUNT CREATION - Create a new Stripe Connect account
 // ============================================================================
 // Endpoint: POST /api/accounts
-// This endpoint creates a new Stripe Connect account for a user.
-// It uses the V2 API which is the latest Stripe Connect API.
+// This endpoint creates a new Stripe Connect Express account for a user.
+// Uses the v1 Accounts API — stripe@15 has no `v2.core.accounts` namespace.
 app.post('/api/accounts', async (req, res) => {
   try {
     const { displayName, contactEmail } = req.body;
@@ -67,44 +76,9 @@ app.post('/api/accounts', async (req, res) => {
       });
     }
 
-    // Create a new Stripe Connect account using the V2 API
-    // Important: We do NOT pass 'type' at the top level - the V2 API
-    // determines account type based on configuration
-    const account = await stripeClient.v2.core.accounts.create({
-      // The name displayed in the Stripe Dashboard
-      display_name: displayName,
-      // Contact email for the account
-      contact_email: contactEmail,
-      // Identity information
-      identity: {
-        country: 'us',
-      },
-      // Allow full access to the dashboard
-      dashboard: 'full',
-      // Set default fee collection responsibility
-      defaults: {
-        responsibilities: {
-          // Stripe collects fees from the platform
-          fees_collector: 'stripe',
-          // Stripe handles payment losses
-          losses_collector: 'stripe',
-        },
-      },
-      // Configure the account capabilities
-      configuration: {
-        // Customer configuration (for subscription payments)
-        customer: {},
-        // Merchant configuration (for payment processing)
-        merchant: {
-          capabilities: {
-            // Enable card payments
-            card_payments: {
-              requested: true,
-            },
-          },
-        },
-      },
-    });
+    const account = await stripeClient.accounts.create(
+      buildExpressAccountCreateParams(displayName, contactEmail)
+    );
 
     // TODO: In a production application, store the mapping between your user
     // and the Stripe account ID in your database:
@@ -114,7 +88,7 @@ app.post('/api/accounts', async (req, res) => {
     res.json({
       success: true,
       accountId: account.id,
-      displayName: account.display_name,
+      displayName: account.business_profile?.name || displayName,
     });
   } catch (error) {
     console.error('Error creating account:', error);
@@ -138,26 +112,12 @@ app.post('/api/onboarding/link', async (req, res) => {
       return res.status(400).json({ error: 'accountId is required' });
     }
 
-    // Create an account link for onboarding using the V2 API
-    // This link will redirect the user to Stripe's onboarding UI
-    const accountLink = await stripeClient.v2.core.accountLinks.create({
-      // The account to onboard
-      account: accountId,
-      // Configure the onboarding flow
-      use_case: {
-        type: 'account_onboarding',
-        account_onboarding: {
-          // Request both merchant and customer configurations
-          // Merchant: payment processing
-          // Customer: subscription/recurring billing
-          configurations: ['merchant', 'customer'],
-          // Where to redirect if the user refreshes during onboarding
-          refresh_url: `${process.env.DOMAIN || 'http://localhost:3000'}/onboarding?accountId=${accountId}`,
-          // Where to redirect after successful onboarding
-          return_url: `${process.env.DOMAIN || 'http://localhost:3000'}/dashboard?accountId=${accountId}`,
-        },
-      },
-    });
+    const accountLink = await stripeClient.accountLinks.create(
+      buildAccountOnboardingLinkParams(
+        accountId,
+        process.env.DOMAIN || 'http://localhost:3000'
+      )
+    );
 
     res.json({
       success: true,
@@ -179,46 +139,8 @@ app.get('/api/accounts/:accountId/status', async (req, res) => {
   try {
     const { accountId } = req.params;
 
-    // Retrieve the account with merchant and customer configuration details
-    // 'include' parameter gets additional details about configuration
-    const account = await stripeClient.v2.core.accounts.retrieve(accountId, {
-      include: [
-        'configuration.merchant',
-        'configuration.customer',
-        'requirements',
-      ],
-    });
-
-    // Check if the account is ready to process card payments
-    // Card payments are "active" when the merchant has completed onboarding
-    // and meets all requirements
-    const readyToProcessPayments =
-      account.configuration?.merchant?.capabilities?.card_payments?.status ===
-      'active';
-
-    // Check the requirements status
-    // This tells us if the user needs to provide more information
-    const requirementsStatus =
-      account.requirements?.summary?.minimum_deadline?.status;
-
-    // Determine if onboarding is complete
-    // Onboarding is complete when there are no "currently_due" or "past_due" requirements
-    const onboardingComplete =
-      requirementsStatus !== 'currently_due' &&
-      requirementsStatus !== 'past_due';
-
-    res.json({
-      success: true,
-      accountId: account.id,
-      onboardingComplete,
-      readyToProcessPayments,
-      requirementsStatus,
-      // Return any currently due requirements (e.g., verification documents)
-      currentlyDueRequirements:
-        account.requirements?.summary?.currently_due || [],
-      // Return any past due requirements that are overdue
-      pastDueRequirements: account.requirements?.summary?.past_due || [],
-    });
+    const account = await stripeClient.accounts.retrieve(accountId);
+    res.json(mapAccountStatus(account));
   } catch (error) {
     console.error('Error fetching account status:', error);
     res.status(500).json({
@@ -412,37 +334,33 @@ app.post('/api/subscriptions', async (req, res) => {
 
     const baseUrl = process.env.DOMAIN || 'http://localhost:3000';
 
-    // Create a checkout session for subscription
-    // customer_account allows the subscription to be managed by the connected account
+    // Prices live on the connected account. Subscription Checkout must use a
+    // recurring price and the Stripe-Account header (direct charge). Setting
+    // customer_account to this same accountId would bill the seller, not a buyer.
+    const price = await stripeClient.prices.retrieve(priceId, {
+      stripeAccount: accountId,
+    });
+    if (!isRecurringPrice(price)) {
+      return res.status(400).json({
+        error:
+          'Subscription checkout requires a recurring price. Create a price with a billing interval, then try again.',
+      });
+    }
+
+    const checkout = buildSubscriptionCheckoutSession(
+      accountId,
+      priceId,
+      baseUrl
+    );
     const session = await stripeClient.checkout.sessions.create(
-      {
-        // In V2 API, use customer_account instead of customer
-        // This represents the account being charged (the connected account customer)
-        customer_account: accountId,
-        // Set mode to 'subscription' for recurring payments
-        mode: 'subscription',
-        // Define the subscription items
-        line_items: [
-          {
-            // The price with billing cycle (monthly, yearly, etc.)
-            price: priceId,
-            quantity: 1,
-          },
-        ],
-        // Success redirect after subscription is created
-        success_url: `${baseUrl}/subscription-success?session_id={CHECKOUT_SESSION_ID}&accountId=${accountId}`,
-        // Cancel redirect
-        cancel_url: `${baseUrl}/dashboard?accountId=${accountId}`,
-      },
-      {
-        // Create on the connected account
-        stripeAccount: accountId,
-      }
+      checkout.sessionParams,
+      checkout.requestOptions
     );
 
     res.json({
       success: true,
       sessionId: session.id,
+      url: session.url,
     });
   } catch (error) {
     console.error('Error creating subscription:', error);
@@ -460,23 +378,21 @@ app.post('/api/subscriptions', async (req, res) => {
 // Billing Portal where they can manage subscriptions, update payment methods, etc.
 app.post('/api/billing-portal', async (req, res) => {
   try {
-    const { accountId } = req.body;
+    const { accountId, customerId } = req.body;
 
-    if (!accountId) {
-      return res.status(400).json({ error: 'accountId is required' });
+    if (!accountId || !customerId) {
+      return res.status(400).json({
+        error:
+          'accountId and customerId are required. The billing portal manages a customer of the connected account, not the connected account itself.',
+      });
     }
 
-    // Create a billing portal session
-    // The customer_account is the connected account (the seller)
     const session = await stripeClient.billingPortal.sessions.create(
       {
-        // The account to manage subscriptions for
-        customer_account: accountId,
-        // Where to redirect after the customer exits the portal
-        return_url: `${process.env.DOMAIN || 'http://localhost:3000'}/dashboard?accountId=${accountId}`,
+        customer: customerId,
+        return_url: `${process.env.DOMAIN || 'http://localhost:3000'}/?accountId=${encodeURIComponent(accountId)}`,
       },
       {
-        // Create on the connected account
         stripeAccount: accountId,
       }
     );
@@ -611,62 +527,14 @@ app.post(
 app.post(
   '/webhook/thin',
   express.raw({ type: 'application/json' }),
-  async (req, res) => {
-    const sig = req.headers['stripe-signature'] as string;
-
-    // Parse the thin event using Stripe client
-    let thinEvent;
-    try {
-      thinEvent = stripeClient.parseThinEvent(
-        req.body,
-        sig,
-        WEBHOOK_SECRET || ''
-      );
-    } catch (err) {
-      console.error('Thin event verification failed:', err);
-      return res.status(400).send(`Webhook Error: ${(err as Error).message}`);
-    }
-
-    // Fetch the full event to understand what changed
-    const event = await stripeClient.v2.core.events.retrieve(thinEvent.id);
-
-    // Handle V2 account events
-    switch (event.type) {
-      // Account requirements changed
-      case 'v2.core.account[requirements].updated': {
-        const account = event.data.object as any;
-        console.log('Account requirements updated:', account.id);
-
-        // TODO: Check what requirements are now due and notify the user
-        // const currentlyDue = account.requirements?.summary?.currently_due;
-        // if (currentlyDue && currentlyDue.length > 0) {
-        //   await notifyUser(account.id, 'New requirements needed', currentlyDue);
-        // }
-
-        break;
-      }
-
-      // Merchant capability status changed
-      case 'v2.core.account[configuration.merchant].capability_status_updated': {
-        const account = event.data.object as any;
-        const cardPaymentsStatus =
-          account.configuration?.merchant?.capabilities?.card_payments?.status;
-
-        console.log('Card payments status:', cardPaymentsStatus);
-
-        // TODO: If status is 'active', notify the user they can now accept payments
-        // if (cardPaymentsStatus === 'active') {
-        //   await notifyUser(account.id, 'Account ready for payments');
-        // }
-
-        break;
-      }
-
-      default:
-        console.log(`Unhandled V2 event type: ${event.type}`);
-    }
-
-    res.json({ received: true });
+  async (_req, res) => {
+    // parseThinEvent and v2.core.events were added in later stripe-node
+    // releases. This sample is pinned to stripe@15, so the handler cannot
+    // verify or retrieve thin events. Use /webhook for v1 event types.
+    return res.status(501).json({
+      error:
+        'Thin event webhooks require stripe@17+. This sample is pinned to stripe@15.',
+    });
   }
 );
 
