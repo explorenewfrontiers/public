@@ -467,6 +467,15 @@
                 required
               />
             </div>
+            <div class="form-group">
+              <label for="billingCustomerId">Customer ID (cus_…)</label>
+              <input
+                type="text"
+                id="billingCustomerId"
+                placeholder="Customer on the connected account"
+                required
+              />
+            </div>
 
             <button type="submit">Open Billing Portal</button>
           </form>
@@ -775,16 +784,12 @@
               priceId,
             });
 
-            // Redirect to Stripe checkout for subscription setup
-            // In a real application, you'd use Stripe.js to redirect
-            const response = await fetch('/get-session', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ sessionId: result.sessionId }),
-            });
+            if (!result.url) {
+              throw new Error('Checkout session did not return a URL');
+            }
 
-            const session = await response.json();
-            window.location.href = session.url;
+            // Hosted Checkout URL — no publishable key or /get-session lookup
+            window.location.href = result.url;
           } catch (error) {
             document.getElementById('subscriptionTitle').textContent = 'Error';
             document.getElementById('subscriptionContent').textContent =
@@ -801,11 +806,12 @@
           e.preventDefault();
 
           const accountId = document.getElementById('billingAccountId').value;
+          const customerId = document.getElementById('billingCustomerId').value;
 
           try {
-            // Get the billing portal session
             const result = await apiCall('/api/billing-portal', 'POST', {
               accountId,
+              customerId,
             });
 
             // Redirect to the billing portal
