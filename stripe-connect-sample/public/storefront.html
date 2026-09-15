@@ -147,6 +147,14 @@
         margin-bottom: 20px;
       }
 
+      .success {
+        background: #eefaf1;
+        color: #1e7a34;
+        padding: 20px;
+        border-radius: 5px;
+        margin-bottom: 20px;
+      }
+
       .back-link {
         display: inline-block;
         margin-bottom: 20px;
@@ -191,6 +199,9 @@
            payments.
            ================================================================ -->
       <div id="error" style="display: none" class="error"></div>
+      <div id="checkoutSuccess" style="display: none" class="success">
+        Payment successful. Thank you for your purchase.
+      </div>
 
       <!-- ================================================================
            PRODUCTS DISPLAY
@@ -214,6 +225,10 @@
 
       const urlParams = new URLSearchParams(window.location.search);
       const accountId = urlParams.get('accountId');
+
+      if (urlParams.get('session_id')) {
+        document.getElementById('checkoutSuccess').style.display = 'block';
+      }
 
       if (!accountId) {
         document.getElementById('error').textContent =
