@@ -2,6 +2,13 @@ import express from 'express';
 import Stripe from 'stripe';
 import bodyParser from 'body-parser';
 import dotenv from 'dotenv';
+import { mapConnectedAccountProduct } from './storefront-checkout.js';
+import {
+  classifyConnectWebhookType,
+  classifyThinWebhookType,
+  didSubscriptionPriceChange,
+  isSubscriptionScheduledForCancellation,
+} from './webhook-events.js';
 
 // Load environment variables from .env file
 dotenv.config();
@@ -311,14 +318,7 @@ app.get('/api/products/:accountId', async (req, res) => {
 
     res.json({
       success: true,
-      products: products.data.map((product) => ({
-        id: product.id,
-        name: product.name,
-        description: product.description,
-        // Get the price from the expanded default_price
-        price: (product.default_price as any)?.unit_amount || 0,
-        currency: (product.default_price as any)?.currency || 'usd',
-      })),
+      products: products.data.map(mapConnectedAccountProduct),
     });
   } catch (error) {
     console.error('Error fetching products:', error);
@@ -540,21 +540,18 @@ app.post(
         // await db.updateSubscription(customerId, subscription);
 
         // Check if this is an upgrade or downgrade
-        if (event.data.previous_attributes?.items?.data) {
+        if (didSubscriptionPriceChange(event)) {
           const oldPrice = event.data.previous_attributes.items.data[0]?.price;
           const newPrice = subscription.items.data[0]?.price.id;
 
-          if (oldPrice !== newPrice) {
-            console.log(
-              `Subscription modified from price ${oldPrice} to ${newPrice}`
-            );
-            // TODO: Handle upgrade/downgrade logic (grant/revoke access)
-          }
+          console.log(
+            `Subscription modified from price ${oldPrice} to ${newPrice}`
+          );
+          // TODO: Handle upgrade/downgrade logic (grant/revoke access)
         }
 
         // Check if subscription is being canceled
-        if (event.data.previous_attributes?.cancel_at_period_end === false &&
-            subscription.cancel_at_period_end === true) {
+        if (isSubscriptionScheduledForCancellation(event)) {
           console.log('Subscription scheduled for cancellation');
           // TODO: Notify the customer about their pending cancellation
         }
@@ -589,7 +586,9 @@ app.post(
       }
 
       default:
-        console.log(`Unhandled event type: ${event.type}`);
+        if (classifyConnectWebhookType(event.type) === 'unhandled') {
+          console.log(`Unhandled event type: ${event.type}`);
+        }
     }
 
     // Return a 200 response to acknowledge receipt of the webhook
@@ -663,7 +662,9 @@ app.post(
       }
 
       default:
-        console.log(`Unhandled V2 event type: ${event.type}`);
+        if (classifyThinWebhookType(event.type) === 'unhandled') {
+          console.log(`Unhandled V2 event type: ${event.type}`);
+        }
     }
 
     res.json({ received: true });

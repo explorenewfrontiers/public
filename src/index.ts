@@ -1,6 +1,7 @@
 import http from 'http';
 import Stripe from 'stripe';
 import { parseProductCatalog, syncProductsToStripe, getStripeProducts, getProductWithPrices } from './catalog.js';
+import { handleBillingToolCall, isBillingTool } from './billing-tools.js';
 
 interface JSONRPCRequest {
   jsonrpc: '2.0';
@@ -197,18 +198,11 @@ async function handleToolCall(
 ): Promise<unknown> {
   const client = getStripeClient(stripeAccount);
 
+  if (isBillingTool(toolName)) {
+    return await handleBillingToolCall(client, toolName, input);
+  }
+
   switch (toolName) {
-    case 'list_customers': {
-      const customers = await client.customers.list({
-        limit: (input.limit as number) || 10,
-        starting_after: input.starting_after as string,
-      });
-      return customers;
-    }
-    case 'get_customer': {
-      const customer = await client.customers.retrieve(input.customer_id as string);
-      return customer;
-    }
     case 'create_customer': {
       const customer = await client.customers.create({
         email: input.email as string,
@@ -236,21 +230,6 @@ async function handleToolCall(
         description: input.description as string,
       });
       return intent;
-    }
-    case 'get_payment_intent': {
-      const intent = await client.paymentIntents.retrieve(input.payment_intent_id as string);
-      return intent;
-    }
-    case 'list_invoices': {
-      const invoices = await client.invoices.list({
-        limit: (input.limit as number) || 10,
-        customer: input.customer as string,
-      });
-      return invoices;
-    }
-    case 'get_invoice': {
-      const invoice = await client.invoices.retrieve(input.invoice_id as string);
-      return invoice;
     }
     case 'list_products': {
       const products = await getStripeProducts(client, (input.limit as number) || 10);
