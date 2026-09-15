@@ -8,7 +8,7 @@
     "build": "tsc",
     "start": "node dist/server.js",
     "dev": "ts-node src/server.ts",
-    "test": "node --test dist/**/*.test.js"
+    "test": "tsc --pretty false --outDir dist --rootDir . --module ES2020 --moduleResolution node --target ES2020 --strict --esModuleInterop --skipLibCheck checkout-redirects.ts checkout-redirects.test.ts && node --test dist/checkout-redirects.test.js"
   },
   "dependencies": {
     "express": "^4.18.2",

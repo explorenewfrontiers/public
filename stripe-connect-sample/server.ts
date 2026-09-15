@@ -2,6 +2,7 @@ import express from 'express';
 import Stripe from 'stripe';
 import bodyParser from 'body-parser';
 import dotenv from 'dotenv';
+import { buildPaymentCheckoutRedirects } from './checkout-redirects.js';
 
 // Load environment variables from .env file
 dotenv.config();
@@ -346,6 +347,8 @@ app.post('/api/checkout', async (req, res) => {
 
     // Get the base URL for redirect URLs
     const baseUrl = process.env.DOMAIN || 'http://localhost:3000';
+    // /success and /storefront are not served — return to storefront.html
+    const checkoutRedirects = buildPaymentCheckoutRedirects(baseUrl, accountId);
 
     // Create a checkout session on the connected account
     // This will handle the payment processing and charge the customer
@@ -371,10 +374,10 @@ app.post('/api/checkout', async (req, res) => {
               0.1 // 10% fee - adjust as needed
           ),
         },
-        // Redirect to success page after payment
-        success_url: `${baseUrl}/success?session_id={CHECKOUT_SESSION_ID}&accountId=${accountId}`,
-        // Redirect to cancel page if payment is canceled
-        cancel_url: `${baseUrl}/storefront?accountId=${accountId}`,
+        // Redirect to the storefront after payment (shows a success banner)
+        success_url: checkoutRedirects.success_url,
+        // Redirect back to the storefront if payment is canceled
+        cancel_url: checkoutRedirects.cancel_url,
       },
       {
         // Create the checkout session on the connected account
