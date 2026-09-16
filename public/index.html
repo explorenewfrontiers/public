@@ -14,6 +14,31 @@
         <p>Browse our products and make a purchase</p>
       </header>
 
+      <div id="checkoutBanner" class="checkout-banner" hidden></div>
+      <script>
+        // Show the return banner before app.js loads. Stripe.js init with a
+        // missing publishable key can throw and abort the rest of app.js —
+        // paid customers still need to see that checkout completed.
+        (function showCheckoutReturnBanner() {
+          var params = new URLSearchParams(window.location.search);
+          var banner = document.getElementById('checkoutBanner');
+          if (!banner) {
+            return;
+          }
+          if (params.get('session_id') || params.get('checkout') === 'success') {
+            banner.className = 'checkout-banner success';
+            banner.textContent = 'Payment successful. Thank you for your purchase.';
+            banner.hidden = false;
+            return;
+          }
+          if (params.get('checkout') === 'canceled') {
+            banner.className = 'checkout-banner canceled';
+            banner.textContent = 'Checkout was canceled. Your cart is unchanged.';
+            banner.hidden = false;
+          }
+        })();
+      </script>
+
       <main>
         <div class="filters">
           <input

@@ -2,6 +2,10 @@ import express from 'express';
 import cors from 'cors';
 import Stripe from 'stripe';
 import { getStripeProducts, getProductWithPrices } from './catalog.js';
+import {
+  buildCatalogCheckoutRedirects,
+  homepagePathForLegacyCheckoutReturn,
+} from './checkout-redirects.js';
 
 const app = express();
 const stripe = new Stripe(process.env.STRIPE_API_KEY || '');
@@ -62,6 +66,10 @@ app.post('/api/checkout', async (req, res) => {
   try {
     const { items } = req.body as { items: Array<{ priceId: string; quantity: number }> };
 
+    const domain = process.env.DOMAIN || 'http://localhost:3000';
+    // /success and /cancel are not served — return to the catalog homepage
+    const checkoutRedirects = buildCatalogCheckoutRedirects(domain);
+
     const session = await stripe.checkout.sessions.create({
       payment_method_types: ['card'],
       line_items: items.map((item) => ({
@@ -69,14 +77,25 @@ app.post('/api/checkout', async (req, res) => {
         quantity: item.quantity,
       })),
       mode: 'payment',
-      success_url: `${process.env.DOMAIN || 'http://localhost:3000'}/success?session_id={CHECKOUT_SESSION_ID}`,
-      cancel_url: `${process.env.DOMAIN || 'http://localhost:3000'}/cancel`,
+      success_url: checkoutRedirects.success_url,
+      cancel_url: checkoutRedirects.cancel_url,
     });
 
     res.json({ sessionId: session.id });
   } catch (error) {
     res.status(500).json({ error: error instanceof Error ? error.message : 'Unknown error' });
   }
+});
+
+// In-flight Checkout sessions may still redirect to /success or /cancel.
+app.get('/success', (req, res) => {
+  const sessionId =
+    typeof req.query.session_id === 'string' ? req.query.session_id : undefined;
+  res.redirect(302, homepagePathForLegacyCheckoutReturn('/success', sessionId));
+});
+
+app.get('/cancel', (_req, res) => {
+  res.redirect(302, homepagePathForLegacyCheckoutReturn('/cancel'));
 });
 
 const port = parseInt(process.env.WEB_PORT || '3000', 10);
