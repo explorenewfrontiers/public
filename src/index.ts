@@ -1,6 +1,7 @@
 import http from 'http';
 import Stripe from 'stripe';
 import { parseProductCatalog, syncProductsToStripe, getStripeProducts, getProductWithPrices } from './catalog.js';
+import { formatToolResult, resolveJsonRpcMethod } from './rpc-methods.js';
 
 interface JSONRPCRequest {
   jsonrpc: '2.0';
@@ -321,7 +322,13 @@ async function handleRequest(
   stripeAccount?: string
 ): Promise<JSONRPCResponse> {
   try {
-    switch (request.method) {
+    const resolved = resolveJsonRpcMethod(
+      request.method,
+      request.params,
+      new Set(Object.keys(tools))
+    );
+
+    switch (resolved.kind) {
       case 'initialize':
         return {
           jsonrpc: '2.0',
@@ -347,9 +354,15 @@ async function handleRequest(
           },
         };
 
+      case 'notification':
+        return {
+          jsonrpc: '2.0',
+          id: request.id,
+          result: {},
+        };
+
       case 'call_tool': {
-        const params = request.params as { name: string; arguments: Record<string, unknown> };
-        if (!params.name || !tools[params.name]) {
+        if (!resolved.name || !tools[resolved.name]) {
           return {
             jsonrpc: '2.0',
             id: request.id,
@@ -360,14 +373,11 @@ async function handleRequest(
           };
         }
         try {
-          const result = await handleToolCall(params.name, params.arguments || {}, stripeAccount);
+          const result = await handleToolCall(resolved.name, resolved.args, stripeAccount);
           return {
             jsonrpc: '2.0',
             id: request.id,
-            result: {
-              type: 'text',
-              text: JSON.stringify(result, null, 2),
-            },
+            result: formatToolResult(result),
           };
         } catch (error) {
           return {
