@@ -1,6 +1,7 @@
 import http from 'http';
 import Stripe from 'stripe';
 import { parseProductCatalog, syncProductsToStripe, getStripeProducts, getProductWithPrices } from './catalog.js';
+import { stripeClientOptions } from './stripe-client-options.js';
 
 interface JSONRPCRequest {
   jsonrpc: '2.0';
@@ -35,16 +36,7 @@ const mpcApiKey = process.env.MCP_API_KEY;
 const mpcAuthEnabled = mpcApiKey !== undefined;
 
 function getStripeClient(stripeAccount?: string): Stripe {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const options: any = {
-    apiVersion: '2024-11-20',
-  };
-
-  if (stripeAccount) {
-    options.stripeAccount = stripeAccount;
-  }
-
-  return new Stripe(stripeApiKey, options);
+  return new Stripe(stripeApiKey, stripeClientOptions(stripeAccount));
 }
 
 const tools: Record<string, ToolDefinition> = {
