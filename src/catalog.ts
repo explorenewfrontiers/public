@@ -15,26 +15,54 @@ export interface ProductRow {
   metadata?: Record<string, string>;
 }
 
+function cellString(value: unknown): string {
+  if (value == null) {
+    return '';
+  }
+  return String(value).trim();
+}
+
+function cellNumber(value: unknown): number {
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return value;
+  }
+  const parsed = parseFloat(cellString(value));
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+export function normalizeProductRow(row: Record<string, unknown>): ProductRow {
+  const id = cellString(row['ID'] ?? row['id']);
+  const name = cellString(row['Name'] ?? row['name']) || 'Unnamed Product';
+  const description = cellString(row['Description'] ?? row['description']);
+  const price = cellNumber(row['Price'] ?? row['price'] ?? 0);
+  const currency = (cellString(row['Currency'] ?? row['currency']) || 'usd').toLowerCase();
+  const image_url = cellString(row['Image URL'] ?? row['image_url']);
+  const category = cellString(row['Category'] ?? row['category']);
+  const sku = cellString(row['SKU'] ?? row['sku']);
+
+  return {
+    id: id || undefined,
+    name,
+    description,
+    price,
+    currency,
+    image_url,
+    category,
+    sku,
+    metadata: {
+      category,
+      sku,
+    },
+  };
+}
+
 export async function parseProductCatalog(filePath: string): Promise<ProductRow[]> {
   const workbook = XLSX.readFile(filePath);
   const sheetName = workbook.SheetNames[0];
   const worksheet = workbook.Sheets[sheetName];
   const data = XLSX.utils.sheet_to_json(worksheet) as Record<string, unknown>[];
 
-  return data.map((row) => ({
-    id: (row['ID'] || row['id'] || '') as string,
-    name: (row['Name'] || row['name'] || 'Unnamed Product') as string,
-    description: (row['Description'] || row['description'] || '') as string,
-    price: parseFloat((row['Price'] || row['price'] || '0') as string),
-    currency: ((row['Currency'] || row['currency'] || 'usd') as string).toLowerCase(),
-    image_url: (row['Image URL'] || row['image_url'] || '') as string,
-    category: (row['Category'] || row['category'] || '') as string,
-    sku: (row['SKU'] || row['sku'] || '') as string,
-    metadata: {
-      category: (row['Category'] || row['category'] || '') as string,
-      sku: (row['SKU'] || row['sku'] || '') as string,
-    },
-  }));
+  return data.map((row) => normalizeProductRow(row));
 }
 
 export async function syncProductsToStripe(
