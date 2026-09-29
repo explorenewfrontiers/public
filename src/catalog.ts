@@ -1,7 +1,6 @@
 import XLSX from 'xlsx';
 import Stripe from 'stripe';
-import fs from 'fs';
-import path from 'path';
+import { toStripeUnitAmount } from './money.js';
 
 export interface ProductRow {
   id?: string;
@@ -45,6 +44,16 @@ export async function syncProductsToStripe(
   const updated: Stripe.Product[] = [];
 
   for (const product of products) {
+    let unitAmount: number;
+    try {
+      unitAmount = toStripeUnitAmount(product.price, product.currency);
+    } catch (error) {
+      console.error(`Skipping product ${product.name}: invalid price`, error);
+      continue;
+    }
+
+    const currency = product.currency || 'usd';
+
     try {
       let stripeProduct: Stripe.Product;
 
@@ -78,8 +87,8 @@ export async function syncProductsToStripe(
         // Create a price for this product
         await stripe.prices.create({
           product: stripeProduct.id,
-          unit_amount: Math.round(product.price * 100), // Convert to cents
-          currency: product.currency || 'usd',
+          unit_amount: unitAmount,
+          currency,
           metadata: {
             sku: product.sku || '',
           },
@@ -101,8 +110,8 @@ export async function syncProductsToStripe(
       // Create a price for this product
       await stripe.prices.create({
         product: stripeProduct.id,
-        unit_amount: Math.round(product.price * 100),
-        currency: product.currency || 'usd',
+        unit_amount: unitAmount,
+        currency,
         metadata: {
           sku: product.sku || '',
         },

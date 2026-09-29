@@ -341,7 +341,7 @@
             </div>
 
             <div class="form-group">
-              <label for="productPrice">Price (in dollars)</label>
+              <label for="productPrice">Price</label>
               <input
                 type="number"
                 id="productPrice"
@@ -576,6 +576,24 @@
         return result;
       }
 
+      // Stripe unit_amount: most currencies are cents; JPY/KRW/etc. are major units.
+      const ZERO_DECIMAL_CURRENCIES = new Set([
+        'bif', 'clp', 'djf', 'gnf', 'jpy', 'kmf', 'krw', 'mga',
+        'pyg', 'rwf', 'ugx', 'vnd', 'vuv', 'xaf', 'xof', 'xpf',
+      ]);
+      const THREE_DECIMAL_CURRENCIES = new Set(['bhd', 'jod', 'kwd', 'omr', 'tnd']);
+
+      function toStripeUnitAmount(amount, currency) {
+        const code = (currency || 'usd').toLowerCase();
+        if (ZERO_DECIMAL_CURRENCIES.has(code)) {
+          return Math.round(amount);
+        }
+        if (THREE_DECIMAL_CURRENCIES.has(code)) {
+          return Math.round(amount * 100) * 10;
+        }
+        return Math.round(amount * 100);
+      }
+
       // ================================================================
       // SECTION 1: ACCOUNT CREATION
       // ================================================================
@@ -717,7 +735,7 @@
               accountId,
               name,
               description,
-              priceInCents: Math.round(parseFloat(price) * 100),
+              priceInCents: toStripeUnitAmount(parseFloat(price), currency),
               currency,
             });
 
@@ -725,7 +743,7 @@
             document.getElementById('productCreatedInfo').innerHTML =
               `<strong>Product ID:</strong> ${result.product.id}<br>` +
               `<strong>Name:</strong> ${result.product.name}<br>` +
-              `<strong>Price:</strong> ${(parseFloat(price)).toFixed(2)} ${currency.toUpperCase()}`;
+              `<strong>Price:</strong> ${price} ${currency.toUpperCase()}`;
 
             document.getElementById('productCreated').style.display = 'block';
             document.getElementById('productError').style.display = 'none';

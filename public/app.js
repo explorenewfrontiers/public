@@ -2,6 +2,33 @@ const stripe = Stripe(window.STRIPE_KEY || ''); // Will be injected by the serve
 let products = [];
 let cart = [];
 
+const ZERO_DECIMAL_CURRENCIES = new Set([
+  'bif', 'clp', 'djf', 'gnf', 'jpy', 'kmf', 'krw', 'mga',
+  'pyg', 'rwf', 'ugx', 'vnd', 'vuv', 'xaf', 'xof', 'xpf',
+]);
+const THREE_DECIMAL_CURRENCIES = new Set(['bhd', 'jod', 'kwd', 'omr', 'tnd']);
+
+function majorAmountFromStripe(unitAmount, currency) {
+  const code = (currency || 'usd').toLowerCase();
+  if (ZERO_DECIMAL_CURRENCIES.has(code)) return unitAmount;
+  if (THREE_DECIMAL_CURRENCIES.has(code)) return unitAmount / 1000;
+  return unitAmount / 100;
+}
+
+function formatStripeMoney(unitAmount, currency) {
+  if (unitAmount == null || Number.isNaN(unitAmount)) return 'N/A';
+  const code = (currency || 'usd').toUpperCase();
+  const major = majorAmountFromStripe(unitAmount, currency);
+  try {
+    return new Intl.NumberFormat(undefined, {
+      style: 'currency',
+      currency: code,
+    }).format(major);
+  } catch {
+    return `${major} ${code}`;
+  }
+}
+
 const productsContainer = document.getElementById('productsContainer');
 const cartItemsContainer = document.getElementById('cartItems');
 const cartTotalEl = document.getElementById('cartTotal');
@@ -62,8 +89,10 @@ async function loadProductPrice(productId) {
     const data = await response.json();
     const price = data.prices[0];
     if (price) {
-      const amount = (price.unit_amount / 100).toFixed(2);
-      document.getElementById(`price-${productId}`).textContent = `$${amount}`;
+      document.getElementById(`price-${productId}`).textContent = formatStripeMoney(
+        price.unit_amount,
+        price.currency
+      );
     }
   } catch (error) {
     console.error('Error loading product price:', error);
@@ -77,7 +106,12 @@ async function showProductDetails(productId) {
     const product = data.product;
     const price = data.prices[0];
 
-    const amount = price ? (price.unit_amount / 100).toFixed(2) : 'N/A';
+    const amount = price
+      ? formatStripeMoney(price.unit_amount, price.currency)
+      : 'N/A';
+    const addButton = price
+      ? `<button class="add-to-cart-btn" onclick="addToCart('${productId}', '${price.id}', '${product.name}', ${price.unit_amount}, '${price.currency || 'usd'}')">Add to Cart</button>`
+      : `<button class="add-to-cart-btn" disabled>Unavailable</button>`;
 
     modalBody.innerHTML = `
       ${
@@ -87,8 +121,8 @@ async function showProductDetails(productId) {
       }
       <h2>${product.name}</h2>
       <p>${product.description || 'No description available'}</p>
-      <div class="modal-price">$${amount}</div>
-      <button class="add-to-cart-btn" onclick="addToCart('${productId}', '${price.id}', '${product.name}', ${price.unit_amount})">Add to Cart</button>
+      <div class="modal-price">${amount}</div>
+      ${addButton}
     `;
 
     modal.style.display = 'block';
@@ -107,12 +141,12 @@ function quickAddToCart(event, productId) {
     .then((data) => {
       const price = data.prices[0];
       if (price) {
-        addToCart(productId, price.id, name, price.unit_amount);
+        addToCart(productId, price.id, name, price.unit_amount, price.currency);
       }
     });
 }
 
-function addToCart(productId, priceId, productName, unitAmount) {
+function addToCart(productId, priceId, productName, unitAmount, currency) {
   const existingItem = cart.find((item) => item.priceId === priceId);
 
   if (existingItem) {
@@ -123,6 +157,7 @@ function addToCart(productId, priceId, productName, unitAmount) {
       priceId,
       name: productName,
       amount: unitAmount,
+      currency: currency || 'usd',
       quantity: 1,
     });
   }
@@ -154,7 +189,7 @@ function updateCart() {
         <div style="font-size: 0.9em; color: #999;">Qty: ${item.quantity}</div>
       </div>
       <div>
-        <span class="cart-item-price">$${((item.amount * item.quantity) / 100).toFixed(2)}</span>
+        <span class="cart-item-price">${formatStripeMoney(item.amount * item.quantity, item.currency)}</span>
         <button class="remove-item" onclick="removeFromCart('${item.priceId}')">Remove</button>
       </div>
     </div>
@@ -162,8 +197,9 @@ function updateCart() {
     )
     .join('');
 
-  const total = cart.reduce((sum, item) => sum + (item.amount * item.quantity) / 100, 0);
-  cartTotalEl.textContent = `$${total.toFixed(2)}`;
+  const totalCurrency = cart[0]?.currency || 'usd';
+  const totalUnit = cart.reduce((sum, item) => sum + item.amount * item.quantity, 0);
+  cartTotalEl.textContent = formatStripeMoney(totalUnit, totalCurrency);
   checkoutBtn.disabled = false;
 }
 

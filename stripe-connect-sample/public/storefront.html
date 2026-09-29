@@ -215,6 +215,28 @@
       const urlParams = new URLSearchParams(window.location.search);
       const accountId = urlParams.get('accountId');
 
+      const ZERO_DECIMAL_CURRENCIES = new Set([
+        'bif', 'clp', 'djf', 'gnf', 'jpy', 'kmf', 'krw', 'mga',
+        'pyg', 'rwf', 'ugx', 'vnd', 'vuv', 'xaf', 'xof', 'xpf',
+      ]);
+      const THREE_DECIMAL_CURRENCIES = new Set(['bhd', 'jod', 'kwd', 'omr', 'tnd']);
+
+      function formatStripeMoney(unitAmount, currency) {
+        if (unitAmount == null || Number.isNaN(unitAmount)) return 'N/A';
+        const code = (currency || 'usd').toLowerCase();
+        let major = unitAmount / 100;
+        if (ZERO_DECIMAL_CURRENCIES.has(code)) major = unitAmount;
+        else if (THREE_DECIMAL_CURRENCIES.has(code)) major = unitAmount / 1000;
+        try {
+          return new Intl.NumberFormat(undefined, {
+            style: 'currency',
+            currency: code.toUpperCase(),
+          }).format(major);
+        } catch {
+          return `${major} ${code.toUpperCase()}`;
+        }
+      }
+
       if (!accountId) {
         document.getElementById('error').textContent =
           'No account ID provided. Please go back and select a store.';
@@ -256,15 +278,15 @@
               const card = document.createElement('div');
               card.className = 'product-card';
 
-              // Format price as currency
-              const price = (product.price / 100).toFixed(2);
+              // Format price using the product's currency exponent (JPY is not cents)
+              const price = formatStripeMoney(product.price, product.currency);
 
               card.innerHTML = `
                 <div class="product-image">🛍️</div>
                 <div class="product-info">
                   <div class="product-name">${product.name}</div>
                   <div class="product-description">${product.description || 'No description'}</div>
-                  <div class="product-price">$${price}</div>
+                  <div class="product-price">${price}</div>
                   <button class="buy-button" data-product-id="${product.id}" data-price-id="${product.priceId || ''}">
                     Buy Now
                   </button>
