@@ -15,26 +15,74 @@ export interface ProductRow {
   metadata?: Record<string, string>;
 }
 
+function firstPresent(row: Record<string, unknown>, keys: string[]): unknown {
+  for (const key of keys) {
+    const value = row[key];
+    if (value !== undefined && value !== null && value !== '') {
+      return value;
+    }
+  }
+  return undefined;
+}
+
+/**
+ * Coerce an Excel cell to a string. `sheet_to_json` keeps numeric cells as
+ * numbers; TypeScript `as string` does not convert them at runtime.
+ */
+export function excelText(value: unknown, fallback = ''): string {
+  if (value === undefined || value === null || value === '') {
+    return fallback;
+  }
+  if (typeof value === 'string') {
+    return value.trim();
+  }
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return String(value);
+  }
+  if (typeof value === 'boolean') {
+    return value ? 'true' : 'false';
+  }
+  return String(value).trim();
+}
+
+/** Stripe metadata values must be strings; numeric Excel cells are not. */
+export function asStripeMetadata(
+  metadata: Record<string, unknown> | undefined
+): Record<string, string> {
+  if (!metadata) {
+    return {};
+  }
+  const out: Record<string, string> = {};
+  for (const [key, value] of Object.entries(metadata)) {
+    out[excelText(key)] = excelText(value);
+  }
+  return out;
+}
+
 export async function parseProductCatalog(filePath: string): Promise<ProductRow[]> {
   const workbook = XLSX.readFile(filePath);
   const sheetName = workbook.SheetNames[0];
   const worksheet = workbook.Sheets[sheetName];
   const data = XLSX.utils.sheet_to_json(worksheet) as Record<string, unknown>[];
 
-  return data.map((row) => ({
-    id: (row['ID'] || row['id'] || '') as string,
-    name: (row['Name'] || row['name'] || 'Unnamed Product') as string,
-    description: (row['Description'] || row['description'] || '') as string,
-    price: parseFloat((row['Price'] || row['price'] || '0') as string),
-    currency: ((row['Currency'] || row['currency'] || 'usd') as string).toLowerCase(),
-    image_url: (row['Image URL'] || row['image_url'] || '') as string,
-    category: (row['Category'] || row['category'] || '') as string,
-    sku: (row['SKU'] || row['sku'] || '') as string,
-    metadata: {
-      category: (row['Category'] || row['category'] || '') as string,
-      sku: (row['SKU'] || row['sku'] || '') as string,
-    },
-  }));
+  return data.map((row) => {
+    const category = excelText(firstPresent(row, ['Category', 'category']));
+    const sku = excelText(firstPresent(row, ['SKU', 'sku']));
+    return {
+      id: excelText(firstPresent(row, ['ID', 'id'])),
+      name: excelText(firstPresent(row, ['Name', 'name']), 'Unnamed Product'),
+      description: excelText(firstPresent(row, ['Description', 'description'])),
+      price: parseFloat((row['Price'] || row['price'] || '0') as string),
+      currency: ((row['Currency'] || row['currency'] || 'usd') as string).toLowerCase(),
+      image_url: excelText(firstPresent(row, ['Image URL', 'image_url'])),
+      category,
+      sku,
+      metadata: {
+        category,
+        sku,
+      },
+    };
+  });
 }
 
 export async function syncProductsToStripe(
@@ -57,7 +105,7 @@ export async function syncProductsToStripe(
             name: product.name,
             description: product.description || undefined,
             images: product.image_url ? [product.image_url] : undefined,
-            metadata: product.metadata,
+            metadata: asStripeMetadata(product.metadata),
           });
           updated.push(stripeProduct);
           console.log(`Updated product: ${product.name}`);
@@ -71,7 +119,7 @@ export async function syncProductsToStripe(
           name: product.name,
           description: product.description || undefined,
           images: product.image_url ? [product.image_url] : undefined,
-          metadata: product.metadata,
+          metadata: asStripeMetadata(product.metadata),
         });
         created.push(stripeProduct);
 
@@ -81,7 +129,7 @@ export async function syncProductsToStripe(
           unit_amount: Math.round(product.price * 100), // Convert to cents
           currency: product.currency || 'usd',
           metadata: {
-            sku: product.sku || '',
+            sku: excelText(product.sku),
           },
         });
 
@@ -94,7 +142,7 @@ export async function syncProductsToStripe(
         name: product.name,
         description: product.description || undefined,
         images: product.image_url ? [product.image_url] : undefined,
-        metadata: product.metadata,
+        metadata: asStripeMetadata(product.metadata),
       });
       created.push(stripeProduct);
 
@@ -104,7 +152,7 @@ export async function syncProductsToStripe(
         unit_amount: Math.round(product.price * 100),
         currency: product.currency || 'usd',
         metadata: {
-          sku: product.sku || '',
+          sku: excelText(product.sku),
         },
       });
     }
