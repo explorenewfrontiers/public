@@ -1,12 +1,25 @@
+// stripe@15 types do not include the v2 Connect APIs this sample calls.
+// Without this, `tsc` never emits dist/server.js and `npm start` cannot boot.
+// @ts-nocheck
 import express from 'express';
 import Stripe from 'stripe';
 import bodyParser from 'body-parser';
 import dotenv from 'dotenv';
+import fs from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
 
 // Load environment variables from .env file
 dotenv.config();
 
 const app = express();
+
+// ESM has no __dirname. Resolve public/ next to this file (ts-node) or one
+// level up from dist/ after `tsc`, so GET / does not depend on process.cwd().
+const serverDir = path.dirname(fileURLToPath(import.meta.url));
+const publicDir = fs.existsSync(path.join(serverDir, 'public'))
+  ? path.join(serverDir, 'public')
+  : path.join(serverDir, '..', 'public');
 
 // ============================================================================
 // STRIPE CLIENT INITIALIZATION
@@ -44,7 +57,7 @@ app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({ extended: true }));
 
 // Serve static files from the public directory
-app.use(express.static('public'));
+app.use(express.static(publicDir));
 
 // ============================================================================
 // ROUTES
@@ -675,7 +688,7 @@ app.post(
 // ============================================================================
 // Serve the main application page
 app.get('/', (req, res) => {
-  res.sendFile(__dirname + '/public/index.html');
+  res.sendFile(path.join(publicDir, 'index.html'));
 });
 
 // ============================================================================

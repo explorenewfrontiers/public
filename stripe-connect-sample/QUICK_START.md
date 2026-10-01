@@ -105,7 +105,7 @@ All code has detailed comments explaining:
 - **TODO** sections for customization
 
 Start with these files:
-1. `src/server.ts` - All API endpoints with detailed comments
+1. `server.ts` - All API endpoints with detailed comments
 2. `public/index.html` - Admin UI with form examples
 3. `public/storefront.html` - Customer UI with checkout
 
