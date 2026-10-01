@@ -201,8 +201,7 @@ stripe listen --thin-events 'v2.core.account[requirements].updated,v2.core.accou
 
 ```
 stripe-connect-sample/
-├── src/
-│   └── server.ts          # Main server with all API endpoints
+├── server.ts              # Main server with all API endpoints
 ├── public/
 │   ├── index.html         # Admin dashboard and account management UI
 │   └── storefront.html    # Customer-facing product listing and checkout
