@@ -4,30 +4,38 @@ Use this checklist before deploying to production.
 
 ## Pre-Deployment ✓
 
+- [ ] Layout is deployable: either `server.ts` lives at `src/server.ts`, or `tsconfig.json`, npm scripts, `Dockerfile`, and `Procfile` point at the root file
+- [ ] Lockfile exists if the image uses `npm ci` (this directory currently has none)
+- [ ] Installed `stripe` package exports `v2.core` (account APIs call it; dependency is `stripe@^15.0.0`)
+- [ ] Confirmed a local start works (`npx ts-node ... server.ts` today; `npm run build` / `npm start` / `npm run dev` do not)
+- [ ] Platform root / `appdir` is `stripe-connect-sample` (repo-root deploy starts the MCP server)
 - [ ] Code is committed and pushed to `main` branch
-- [ ] All tests pass locally: `npm run build`
 - [ ] No console errors in local testing
 - [ ] `.env` file is NOT committed (only `.env.example`)
 - [ ] Dependencies are up to date: `npm install`
+- [ ] If using GitHub Actions, workflow file is at repo-root `.github/workflows/` (the copy under `stripe-connect-sample/.github/` is ignored)
 
 ## Stripe Setup ✓
 
 ### API Keys
 - [ ] Have Stripe test keys ready (from https://dashboard.stripe.com/apikeys)
 - [ ] Secret Key: `sk_test_...`
-- [ ] Publishable Key: `pk_test_...`
+- [ ] Publishable Key: `pk_test_...` (storefront currently hardcodes a placeholder)
 - [ ] Know where to get live keys when ready
 
 ### Webhooks
 - [ ] Created webhook endpoint for standard events
   - [ ] URL set to production domain + `/webhook`
-  - [ ] Events: `checkout.session.completed`, `checkout.session.async_payment_failed`
-  - [ ] Have signing secret: `whsec_...`
+  - [ ] Events actually handled: `customer.subscription.updated`, `customer.subscription.deleted`, `invoice.payment_succeeded`
+  - [ ] Have signing secret: `whsec_...` in `WEBHOOK_SECRET`
 - [ ] Created webhook endpoint for V2 events
   - [ ] URL set to production domain + `/webhook/thin`
   - [ ] Payload style: "Thin"
   - [ ] Events from: "Connected accounts"
-  - [ ] Have signing secret
+  - [ ] Events actually handled: `v2.core.account[requirements].updated`, `v2.core.account[configuration.merchant].capability_status_updated`
+  - [ ] Same `WEBHOOK_SECRET` is used for both routes unless you add a second env var
+- [ ] Aware that `bodyParser.json()` is global — signature verification needs the raw body
+- [ ] Not relying on `checkout.session.completed`, `payment_intent.payment_failed`, or `checkout.session.expired` (unhandled in `server.ts`)
 
 ## Platform Selection ✓
 
@@ -36,15 +44,19 @@ Choose ONE:
   - [ ] Have Heroku account
   - [ ] Have Heroku CLI installed
   - [ ] Know your app name
+  - [ ] Deploy prefix / appdir is this directory, not repo root
 - [ ] **Railway** - Modern alternative
   - [ ] Have Railway account
   - [ ] Repository connected to GitHub
+  - [ ] Root directory set to `stripe-connect-sample`
 - [ ] **Docker** - For any cloud provider
   - [ ] Docker Hub account (if pushing images)
   - [ ] Cloud provider account (AWS/GCP/etc.)
-- [ ] **Vercel** - Serverless (requires refactoring)
+  - [ ] Dockerfile copies / compiles `server.ts` (not missing `src/`)
+  - [ ] `npm ci` has a lockfile, or the Dockerfile uses `npm install`
+- [ ] **Vercel** - Not drop-in (vercel.json is a stub; no `api/` functions)
   - [ ] Have Vercel account
-  - [ ] Read Vercel limitations section
+  - [ ] Read Vercel limitations section in `DEPLOYMENT.md`
 
 ## Environment Variables ✓
 
@@ -62,7 +74,7 @@ PORT=3000
 - [ ] STRIPE_SECRET_KEY is set
 - [ ] STRIPE_PUBLISHABLE_KEY is set
 - [ ] WEBHOOK_SECRET is set
-- [ ] DOMAIN is correct (with https://)
+- [ ] DOMAIN is correct (with https://, no trailing slash)
 - [ ] NODE_ENV=production
 
 ## Deployment ✓
@@ -70,13 +82,14 @@ PORT=3000
 ### Heroku
 - [ ] Created Heroku app
 - [ ] Set all environment variables
-- [ ] Deployed with `git push heroku main`
+- [ ] Deployed this directory (not `git push heroku main` from repo root)
 - [ ] Checked logs with `heroku logs --tail`
 - [ ] Opened app with `heroku open`
 - [ ] App loads without errors
 
 ### Railway
 - [ ] Connected GitHub repository
+- [ ] Root directory is `stripe-connect-sample`
 - [ ] Set all environment variables in Railway dashboard
 - [ ] Deployment started automatically
 - [ ] Checked deployment logs
@@ -84,8 +97,9 @@ PORT=3000
 - [ ] App loads without errors
 
 ### Docker
-- [ ] Built Docker image: `docker build -t app .`
+- [ ] Built Docker image: `docker build -t app .` (after layout + lockfile fix)
 - [ ] Tested locally: `docker run -p 3000:3000 app`
+- [ ] Host `dist/` is not empty if using compose's bind mount
 - [ ] Pushed to registry (Docker Hub/GCR)
 - [ ] Deployed to cloud provider
 - [ ] Checked logs
@@ -94,16 +108,19 @@ PORT=3000
 ## Post-Deployment ✓
 
 - [ ] App is accessible at your domain
-- [ ] Homepage loads (http://your-domain.com)
+- [ ] Homepage loads (`/` serves `public/index.html`)
 - [ ] API endpoints respond (try creating an account)
+- [ ] Storefront is `/storefront.html` (not `/storefront`)
 - [ ] No 404 errors for static files
 - [ ] HTTPS is working (green lock icon)
 - [ ] Stripe keys are correct (not test keys mixed with live)
+- [ ] `readyToProcessPayments` is not a write gate — incomplete accounts can still hit Checkout
+- [ ] Currency is two-decimal (`usd`/`eur`/`gbp`) unless conversion/display is updated
 
 ## Webhook Testing ✓
 
 - [ ] Webhook endpoint is accessible
-- [ ] Webhook signatures verify correctly
+- [ ] Webhook signatures verify correctly (raw body)
 - [ ] Test event received and logged
 - [ ] Production domain matches Stripe webhook URL exactly
 
@@ -122,6 +139,8 @@ PORT=3000
 - [ ] Webhook secret is set (prevents unauthorized requests)
 - [ ] No API keys exposed in error messages
 - [ ] Rate limiting considered for production scale
+- [ ] Account IDs in URLs treated as sample-only (not production)
+- [ ] Catalog/storefront strings not treated as trusted HTML (`innerHTML` is used)
 
 ## Database (When Ready) ✓
 
@@ -148,7 +167,7 @@ Only do this after testing with test keys:
 If something breaks:
 - [ ] Check platform logs
 - [ ] Verify all environment variables are set
-- [ ] Test locally first: `npm run dev`
+- [ ] Test locally first with `npx ts-node ... server.ts` (not `npm run dev`)
 - [ ] Check Stripe dashboard for errors
 - [ ] Review webhook delivery history
 - [ ] Check domain DNS is correct
