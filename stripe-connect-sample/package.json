@@ -8,7 +8,7 @@
     "build": "tsc",
     "start": "node dist/server.js",
     "dev": "ts-node src/server.ts",
-    "test": "node --test dist/**/*.test.js"
+    "test": "node --test runtime-boot.test.js dist/**/*.test.js"
   },
   "dependencies": {
     "express": "^4.18.2",
