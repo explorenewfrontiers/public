@@ -205,6 +205,18 @@
     </div>
 
     <script>
+      // Merchant-controlled product name/description must not be treated as HTML.
+      // Connected accounts can put markup in those fields; interpolating them
+      // into innerHTML would run as XSS on the platform storefront.
+      function escapeHtml(value) {
+        return String(value ?? '')
+          .replace(/&/g, '&amp;')
+          .replace(/</g, '&lt;')
+          .replace(/>/g, '&gt;')
+          .replace(/"/g, '&quot;')
+          .replace(/'/g, '&#39;');
+      }
+
       // ================================================================
       // GET ACCOUNT ID FROM URL
       // ================================================================
@@ -262,10 +274,10 @@
               card.innerHTML = `
                 <div class="product-image">🛍️</div>
                 <div class="product-info">
-                  <div class="product-name">${product.name}</div>
-                  <div class="product-description">${product.description || 'No description'}</div>
+                  <div class="product-name">${escapeHtml(product.name)}</div>
+                  <div class="product-description">${escapeHtml(product.description || 'No description')}</div>
                   <div class="product-price">$${price}</div>
-                  <button class="buy-button" data-product-id="${product.id}" data-price-id="${product.priceId || ''}">
+                  <button class="buy-button" data-product-id="${escapeHtml(product.id)}" data-price-id="${escapeHtml(product.priceId || '')}">
                     Buy Now
                   </button>
                 </div>
