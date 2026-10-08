@@ -2,6 +2,17 @@ const stripe = Stripe(window.STRIPE_KEY || ''); // Will be injected by the serve
 let products = [];
 let cart = [];
 
+// Product name/description/images come from Stripe (and Excel catalog sync).
+// Interpolating them into innerHTML or onclick strings is stored XSS on the storefront.
+function escapeHtml(value) {
+  return String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
 const productsContainer = document.getElementById('productsContainer');
 const cartItemsContainer = document.getElementById('cartItems');
 const cartTotalEl = document.getElementById('cartTotal');
@@ -33,22 +44,35 @@ function renderProducts(productsToShow) {
   productsContainer.innerHTML = productsToShow
     .map(
       (product) => `
-    <div class="product-card" onclick="showProductDetails('${product.id}')">
+    <div class="product-card" data-product-id="${escapeHtml(product.id)}">
       ${
         product.images && product.images.length > 0
-          ? `<img src="${product.images[0]}" alt="${product.name}" class="product-image">`
+          ? `<img src="${escapeHtml(product.images[0])}" alt="${escapeHtml(product.name)}" class="product-image">`
           : `<div class="product-image">📦</div>`
       }
       <div class="product-info">
-        <div class="product-name">${product.name}</div>
-        <div class="product-description">${product.description || 'No description'}</div>
-        <div class="product-price" id="price-${product.id}">Loading...</div>
-        <button class="add-to-cart-btn" onclick="quickAddToCart(event, '${product.id}')">Add to Cart</button>
+        <div class="product-name">${escapeHtml(product.name)}</div>
+        <div class="product-description">${escapeHtml(product.description || 'No description')}</div>
+        <div class="product-price" id="price-${escapeHtml(product.id)}">Loading...</div>
+        <button type="button" class="add-to-cart-btn" data-add-to-cart>Add to Cart</button>
       </div>
     </div>
   `
     )
     .join('');
+
+  productsContainer.querySelectorAll('.product-card').forEach((card) => {
+    const productId = card.getAttribute('data-product-id');
+    card.addEventListener('click', () => {
+      showProductDetails(productId);
+    });
+    const addButton = card.querySelector('[data-add-to-cart]');
+    if (addButton) {
+      addButton.addEventListener('click', (event) => {
+        quickAddToCart(event, productId);
+      });
+    }
+  });
 
   // Load prices for each product
   productsToShow.forEach((product) => {
@@ -82,14 +106,21 @@ async function showProductDetails(productId) {
     modalBody.innerHTML = `
       ${
         product.images && product.images.length > 0
-          ? `<img src="${product.images[0]}" alt="${product.name}">`
+          ? `<img src="${escapeHtml(product.images[0])}" alt="${escapeHtml(product.name)}">`
           : `<div style="background: #f5f5f5; height: 300px; display: flex; align-items: center; justify-content: center; font-size: 3em; border-radius: 5px;">📦</div>`
       }
-      <h2>${product.name}</h2>
-      <p>${product.description || 'No description available'}</p>
+      <h2>${escapeHtml(product.name)}</h2>
+      <p>${escapeHtml(product.description || 'No description available')}</p>
       <div class="modal-price">$${amount}</div>
-      <button class="add-to-cart-btn" onclick="addToCart('${productId}', '${price.id}', '${product.name}', ${price.unit_amount})">Add to Cart</button>
+      <button type="button" class="add-to-cart-btn" data-modal-add-to-cart ${price ? '' : 'disabled'}>Add to Cart</button>
     `;
+
+    const modalAddButton = modalBody.querySelector('[data-modal-add-to-cart]');
+    if (price && modalAddButton) {
+      modalAddButton.addEventListener('click', () => {
+        addToCart(productId, price.id, product.name, price.unit_amount);
+      });
+    }
 
     modal.style.display = 'block';
   } catch (error) {
@@ -150,17 +181,23 @@ function updateCart() {
       (item) => `
     <div class="cart-item">
       <div>
-        <div class="cart-item-name">${item.name}</div>
+        <div class="cart-item-name">${escapeHtml(item.name)}</div>
         <div style="font-size: 0.9em; color: #999;">Qty: ${item.quantity}</div>
       </div>
       <div>
         <span class="cart-item-price">$${((item.amount * item.quantity) / 100).toFixed(2)}</span>
-        <button class="remove-item" onclick="removeFromCart('${item.priceId}')">Remove</button>
+        <button type="button" class="remove-item" data-remove-price-id="${escapeHtml(item.priceId)}">Remove</button>
       </div>
     </div>
   `
     )
     .join('');
+
+  cartItemsContainer.querySelectorAll('[data-remove-price-id]').forEach((button) => {
+    button.addEventListener('click', () => {
+      removeFromCart(button.getAttribute('data-remove-price-id'));
+    });
+  });
 
   const total = cart.reduce((sum, item) => sum + (item.amount * item.quantity) / 100, 0);
   cartTotalEl.textContent = `$${total.toFixed(2)}`;
