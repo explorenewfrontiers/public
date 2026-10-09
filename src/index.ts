@@ -1,6 +1,7 @@
 import http from 'http';
 import Stripe from 'stripe';
 import { parseProductCatalog, syncProductsToStripe, getStripeProducts, getProductWithPrices } from './catalog.js';
+import { isMcpAuthEnabled, validateBearerAuth } from './mcp-auth.js';
 
 interface JSONRPCRequest {
   jsonrpc: '2.0';
@@ -32,7 +33,7 @@ interface ToolDefinition {
 
 const stripeApiKey = process.env.STRIPE_API_KEY || '';
 const mpcApiKey = process.env.MCP_API_KEY;
-const mpcAuthEnabled = mpcApiKey !== undefined;
+const mpcAuthEnabled = isMcpAuthEnabled(mpcApiKey);
 
 function getStripeClient(stripeAccount?: string): Stripe {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -300,20 +301,7 @@ async function handleToolCall(
 }
 
 function validateAuth(authHeader: string | undefined): boolean {
-  if (!mpcAuthEnabled) {
-    return true;
-  }
-
-  if (!authHeader) {
-    return false;
-  }
-
-  const [scheme, token] = authHeader.split(' ');
-  if (scheme !== 'Bearer') {
-    return false;
-  }
-
-  return token === mpcApiKey;
+  return validateBearerAuth(authHeader, mpcApiKey);
 }
 
 async function handleRequest(

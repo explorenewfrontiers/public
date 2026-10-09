@@ -1,19 +1,24 @@
+FROM node:18-alpine AS builder
+
+WORKDIR /app
+
+COPY package.json package-lock.json* ./
+RUN npm ci
+
+COPY tsconfig.json ./
+COPY src ./src
+RUN npm run build
+
 FROM node:18-alpine
 
 WORKDIR /app
 
-# Copy package files
 COPY package.json package-lock.json* ./
-
-# Install dependencies
 RUN npm ci --only=production
 
-# Copy source
-COPY dist ./dist
+COPY --from=builder /app/dist ./dist
 
-# Expose port
+ENV PORT=8000
 EXPOSE 8000
 
-# Start server
-ENV PORT=8000
 CMD ["node", "dist/index.js"]
