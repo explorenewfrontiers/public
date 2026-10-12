@@ -2,6 +2,8 @@
 
 Get the Stripe Connect sample running in 5 minutes.
 
+This directory is a **separate** Express app from the repo-root MCP server. Use `STRIPE_SECRET_KEY` here (not `STRIPE_API_KEY`).
+
 ## Step 1: Get Your Stripe API Keys (2 minutes)
 
 1. Go to https://dashboard.stripe.com/apikeys
@@ -30,17 +32,25 @@ PORT=3000
 ## Step 3: Install and Run (2 minutes)
 
 ```bash
-# Install dependencies
+# Install dependencies (there is no package-lock.json here; npm ci will fail)
 npm install
 
-# Build TypeScript
-npm run build
+# Source is server.ts (not src/server.ts). npm run build / npm start / npm run
+# dev currently target a missing src/ tree — do not use them yet.
+npx ts-node --compiler-options '{"module":"ES2020","moduleResolution":"node"}' server.ts
+```
 
-# Start the server
-npm start
+If that fails on ESM imports (`"type": "module"` in `package.json`):
+
+```bash
+node --loader ts-node/esm server.ts
 ```
 
 Visit: http://localhost:3000
+
+`server.ts` loads `.env` via `dotenv`. The process exits immediately if `STRIPE_SECRET_KEY` is missing.
+
+Account creation uses `stripeClient.v2.core.accounts`. If that call throws `v2 is undefined` (or similar), the installed `stripe@^15` package does not export the V2 client this sample calls.
 
 ## Step 4: Test the Flow (5 minutes)
 
@@ -57,16 +67,19 @@ Visit: http://localhost:3000
 - Click the blue "Complete Onboarding" button
 - Fill out the Stripe onboarding form (use test data)
 
+Onboarding `return_url` / `refresh_url` point at `/dashboard` and `/onboarding`, which are not implemented. After KYC, return to `http://localhost:3000` and check status again.
+
 ### 3. Create a Product
 - Go to "Step 3: Create Products"
 - Paste your Account ID
 - Enter product details (name, price, etc.)
 - Click "Create Product"
+- Copy `default_price` from the response if you need a checkout price ID (`price_...`)
 
 ### 4. View Storefront
 - Go to "Step 4: View Storefront"
 - Paste your Account ID
-- Click "Open Storefront"
+- Click "Open Storefront" (opens `/storefront.html?accountId=...`)
 - See your product displayed
 
 ### 5. Make a Test Purchase
@@ -75,14 +88,16 @@ Visit: http://localhost:3000
 - Any future expiry date and 3-digit CVC
 - Complete the purchase
 
+Buy Now currently sends `product.default_price`, which the list API does not return. Replace the storefront hardcoded `pk_test_51234567890` with your publishable key, and pass the `price_...` ID from product creation.
+
 ## What Just Happened?
 
 1. **Created a Stripe Connect Account** - A seller account that can accept payments
 2. **Completed Onboarding** - KYC verification (with test data)
 3. **Created Products** - Items that can be purchased
-4. **Processed a Payment** - Customer paid the seller (with platform fee)
+4. **Attempted a Payment** - Checkout Session on the connected account
 
-The funds went to the connected account, and the platform kept the application fee.
+The live fee formula is `Math.round(quantity * 0.1)` **cents**, so a quantity of `1` sends a `$0.00` application fee (not 10% of the price).
 
 ## Next: Set Up Webhooks (Optional)
 
@@ -92,9 +107,11 @@ To test webhook handling:
 # Install Stripe CLI
 # https://docs.stripe.com/cli/install
 
-# Listen for webhook events
-stripe listen --events customer.subscription.updated,invoice.payment_succeeded --forward-to localhost:3000/webhook
+# Events the /webhook handler actually switches on
+stripe listen --events customer.subscription.updated,customer.subscription.deleted,invoice.payment_succeeded --forward-to localhost:3000/webhook
 ```
+
+Copy the CLI signing secret into `WEBHOOK_SECRET`. Both `/webhook` and `/webhook/thin` use that one env var.
 
 ## Understand the Code
 
@@ -105,9 +122,21 @@ All code has detailed comments explaining:
 - **TODO** sections for customization
 
 Start with these files:
-1. `src/server.ts` - All API endpoints with detailed comments
+1. `server.ts` - All API endpoints with detailed comments
 2. `public/index.html` - Admin UI with form examples
 3. `public/storefront.html` - Customer UI with checkout
+
+Known UI / deploy gaps (verified against the handlers):
+- Storefront Buy Now sends `product.default_price`, but `GET /api/products/:accountId` does not return a price ID
+- Storefront Stripe.js key is hardcoded (`pk_test_51234567890`), not `STRIPE_PUBLISHABLE_KEY`
+- Subscription form POSTs `/get-session`, which is not implemented — billing portal (`url`) works
+- Global `bodyParser.json()` runs before webhook routes, so signature verification often fails until raw-body parsing is first
+- Product name/description are interpolated into `innerHTML` with no escaping (merchant-controlled XSS on the platform origin)
+- Storefront always shows `$` + amount/100 (wrong for zero-decimal currencies)
+- Product / checkout / subscription / billing-portal POSTs do not check `readyToProcessPayments`
+- One-time payment events are not handled on `/webhook` (subscription events only)
+- `docker compose up` bind-mounts host `dist/` over the image; an empty host `dist/` hides a successful image build
+- Heroku `Procfile` is `web: npm run build && npm start`. After slug compile, `typescript` is pruned, so dyno boot fails with `tsc: not found` even if `src/` exists
 
 ## Common Questions
 
@@ -118,13 +147,10 @@ A: Go to Dashboard > Developers > Webhooks. Create an endpoint first, then copy 
 A: Yes, after testing with test keys, you can switch to live keys. But test first!
 
 **Q: How do I charge a specific percentage?**
-A: Edit the application fee in `server.ts` checkout endpoint:
-```typescript
-application_fee_amount: Math.round(price * 0.10)  // 10%
-```
+A: The live checkout formula is `Math.round((quantity || 1) * 0.1)` cents (about `$0.00` per item), not 10% of price. To take 10% of the charge, compute `Math.round(unitAmount * quantity * 0.10)` in `POST /api/checkout`.
 
 **Q: How do I store accounts in a database?**
-A: Look for TODO comments in `server.ts` - they show where to add database calls.
+A: Look for TODO comments in `server.ts` — they show where to add database calls.
 
 **Q: Can I customize the styling?**
 A: Yes! Edit the `<style>` sections in the HTML files.
