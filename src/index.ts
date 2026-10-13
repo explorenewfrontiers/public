@@ -1,6 +1,9 @@
 import http from 'http';
 import Stripe from 'stripe';
+import { loadEnv } from './load-env.js';
 import { parseProductCatalog, syncProductsToStripe, getStripeProducts, getProductWithPrices } from './catalog.js';
+
+loadEnv();
 
 interface JSONRPCRequest {
   jsonrpc: '2.0';
