@@ -1,7 +1,10 @@
 import express from 'express';
 import cors from 'cors';
 import Stripe from 'stripe';
+import { loadEnv } from './load-env.js';
 import { getStripeProducts, getProductWithPrices } from './catalog.js';
+
+loadEnv();
 
 const app = express();
 const stripe = new Stripe(process.env.STRIPE_API_KEY || '');
