@@ -15,17 +15,35 @@ export interface ProductRow {
   metadata?: Record<string, string>;
 }
 
-export async function parseProductCatalog(filePath: string): Promise<ProductRow[]> {
-  const workbook = XLSX.readFile(filePath);
-  const sheetName = workbook.SheetNames[0];
-  const worksheet = workbook.Sheets[sheetName];
-  const data = XLSX.utils.sheet_to_json(worksheet) as Record<string, unknown>[];
+/**
+ * Map one spreadsheet row to a catalog product.
+ * Rows without a name or a positive price are skipped so section headers
+ * and blank Price cells cannot become $0 Stripe products.
+ */
+export function parseCatalogRow(row: Record<string, unknown>): ProductRow | null {
+  const rawName = row['Name'] ?? row['name'];
+  if (rawName === undefined || rawName === null || rawName === '') {
+    return null;
+  }
+  const name = typeof rawName === 'string' ? rawName.trim() : String(rawName);
+  if (!name) {
+    return null;
+  }
 
-  return data.map((row) => ({
+  const rawPrice = row['Price'] ?? row['price'];
+  if (rawPrice === undefined || rawPrice === null || rawPrice === '') {
+    return null;
+  }
+  const price = typeof rawPrice === 'number' ? rawPrice : parseFloat(String(rawPrice));
+  if (!Number.isFinite(price) || price <= 0) {
+    return null;
+  }
+
+  return {
     id: (row['ID'] || row['id'] || '') as string,
-    name: (row['Name'] || row['name'] || 'Unnamed Product') as string,
+    name,
     description: (row['Description'] || row['description'] || '') as string,
-    price: parseFloat((row['Price'] || row['price'] || '0') as string),
+    price,
     currency: ((row['Currency'] || row['currency'] || 'usd') as string).toLowerCase(),
     image_url: (row['Image URL'] || row['image_url'] || '') as string,
     category: (row['Category'] || row['category'] || '') as string,
@@ -34,7 +52,18 @@ export async function parseProductCatalog(filePath: string): Promise<ProductRow[
       category: (row['Category'] || row['category'] || '') as string,
       sku: (row['SKU'] || row['sku'] || '') as string,
     },
-  }));
+  };
+}
+
+export async function parseProductCatalog(filePath: string): Promise<ProductRow[]> {
+  const workbook = XLSX.readFile(filePath);
+  const sheetName = workbook.SheetNames[0];
+  const worksheet = workbook.Sheets[sheetName];
+  const data = XLSX.utils.sheet_to_json(worksheet) as Record<string, unknown>[];
+
+  return data
+    .map((row) => parseCatalogRow(row))
+    .filter((product): product is ProductRow => product !== null);
 }
 
 export async function syncProductsToStripe(
@@ -45,6 +74,11 @@ export async function syncProductsToStripe(
   const updated: Stripe.Product[] = [];
 
   for (const product of products) {
+    if (!Number.isFinite(product.price) || product.price <= 0) {
+      console.error(`Skipping product ${product.name}: invalid price ${product.price}`);
+      continue;
+    }
+
     try {
       let stripeProduct: Stripe.Product;
 
