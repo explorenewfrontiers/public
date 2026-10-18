@@ -15,26 +15,48 @@ export interface ProductRow {
   metadata?: Record<string, string>;
 }
 
+/** True when SheetJS decoded an Excel date/time serial into a Date. */
+export function isExcelDatePrice(value: unknown): value is Date {
+  return value instanceof Date && !Number.isNaN(value.getTime());
+}
+
 export async function parseProductCatalog(filePath: string): Promise<ProductRow[]> {
-  const workbook = XLSX.readFile(filePath);
+  // cellDates is required so date-formatted Price cells (Excel auto-converts
+  // values like 10/15) arrive as Date instead of a ~45,000 serial that we
+  // would otherwise store as a dollar amount.
+  const workbook = XLSX.readFile(filePath, { cellDates: true });
   const sheetName = workbook.SheetNames[0];
   const worksheet = workbook.Sheets[sheetName];
   const data = XLSX.utils.sheet_to_json(worksheet) as Record<string, unknown>[];
 
-  return data.map((row) => ({
-    id: (row['ID'] || row['id'] || '') as string,
-    name: (row['Name'] || row['name'] || 'Unnamed Product') as string,
-    description: (row['Description'] || row['description'] || '') as string,
-    price: parseFloat((row['Price'] || row['price'] || '0') as string),
-    currency: ((row['Currency'] || row['currency'] || 'usd') as string).toLowerCase(),
-    image_url: (row['Image URL'] || row['image_url'] || '') as string,
-    category: (row['Category'] || row['category'] || '') as string,
-    sku: (row['SKU'] || row['sku'] || '') as string,
-    metadata: {
+  const products: ProductRow[] = [];
+  for (const row of data) {
+    const rawPrice = row['Price'] ?? row['price'];
+    if (isExcelDatePrice(rawPrice)) {
+      const name = (row['Name'] || row['name'] || 'Unnamed Product') as string;
+      console.error(
+        `Skipping catalog row "${name}": Price is an Excel date (${rawPrice.toISOString()}), not a dollar amount`
+      );
+      continue;
+    }
+
+    products.push({
+      id: (row['ID'] || row['id'] || '') as string,
+      name: (row['Name'] || row['name'] || 'Unnamed Product') as string,
+      description: (row['Description'] || row['description'] || '') as string,
+      price: parseFloat((rawPrice || '0') as string),
+      currency: ((row['Currency'] || row['currency'] || 'usd') as string).toLowerCase(),
+      image_url: (row['Image URL'] || row['image_url'] || '') as string,
       category: (row['Category'] || row['category'] || '') as string,
       sku: (row['SKU'] || row['sku'] || '') as string,
-    },
-  }));
+      metadata: {
+        category: (row['Category'] || row['category'] || '') as string,
+        sku: (row['SKU'] || row['sku'] || '') as string,
+      },
+    });
+  }
+
+  return products;
 }
 
 export async function syncProductsToStripe(
