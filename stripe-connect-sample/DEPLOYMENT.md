@@ -2,6 +2,31 @@
 
 Deploy the Stripe Connect sample to production with these step-by-step guides.
 
+## Blockers in this tree (read first)
+
+The deployment files added in this directory assume a `src/` TypeScript layout. The running app is `server.ts` at the sample root.
+
+| Artifact | What the code actually does |
+|---|---|
+| `tsconfig.json` | `"rootDir": "./src"`, `"include": ["src/**/*"]` — `npm run build` compiles nothing. |
+| `package.json` | `start` → `dist/server.js`; `dev` → `src/server.ts` (missing). |
+| `package-lock.json` | **Absent.** `Dockerfile` runs `npm ci`, which requires a lockfile. Local `npm install` works. |
+| `Dockerfile` | Builder `COPY src ./src` then `npm run build`. Image build fails without `src/`. |
+| `docker-compose.yml` | Bind-mounts `./dist:/app/dist`. A missing host `dist/` overlays the image with an empty directory. |
+| `Procfile` | `web: npm run build && npm start` — same broken compile path, **and** a Heroku boot trap after a layout fix (see Heroku). |
+| `vercel.json` | `functions.api/**/*.ts` and `outputDirectory: dist`. There is no `api/` directory; this is still one Express process. |
+| `.github/workflows/deploy.yml` | Lives under `stripe-connect-sample/.github/`. GitHub only runs workflows from the **repository root** `.github/workflows/`. |
+
+**Before any platform deploy**, either move `server.ts` into `src/server.ts` and keep the existing scripts, or point `tsconfig.json`, npm scripts, and the Dockerfile at the root file. Generate a lockfile if you keep `npm ci`. Until then, local `ts-node server.ts` is the only documented start path.
+
+This GitHub repository is a two-app tree. Root `package.json`, root `Dockerfile`, and `docker-compose.yml` belong to the **MCP server**. Connecting Heroku, Railway, or a Dockerfile build to the repo root will start `src/index.ts` on port 8000, not this Connect sample. Set the application root / `appdir` to `stripe-connect-sample` (and fix the layout first).
+
+Both webhook routes (`/webhook`, `/webhook/thin`) verify with a single `WEBHOOK_SECRET`. Standard events handled in `server.ts`: `customer.subscription.updated`, `customer.subscription.deleted`, `invoice.payment_succeeded`. Thin events handled: `v2.core.account[requirements].updated`, `v2.core.account[configuration.merchant].capability_status_updated`. One-time Checkout / PaymentIntent success and failure types are not handled (they still return `{ received: true }`).
+
+Account APIs call `stripeClient.v2.core.*` against `stripe@^15.0.0`. Confirm the installed SDK exports `v2` in the image you ship.
+
+`GET /` uses `res.sendFile(__dirname + '/public/index.html')`. This package is `"type": "module"`, so `__dirname` is undefined. `express.static('public')` usually serves `/` first; if static serving is skipped, the homepage throws. After a layout fix, resolve `public/` via `import.meta.url`.
+
 ## Choose Your Platform
 
 - **[Heroku](#heroku)** - Easiest, free tier available, great for beginners
@@ -13,13 +38,15 @@ Deploy the Stripe Connect sample to production with these step-by-step guides.
 
 ## Heroku
 
-The easiest option - deploy in 5 minutes.
+The easiest option - deploy in 5 minutes **after** the layout blockers above are fixed.
 
 ### Prerequisites
 - Heroku account (free at https://www.heroku.com)
 - Heroku CLI installed: https://devcenter.heroku.com/articles/heroku-cli
 
 ### Deploy
+
+`git push heroku main` from the **repository root** deploys the MCP app. Create the Heroku app with this directory as the app root, or use a subtree / `appdir` of `stripe-connect-sample`.
 
 ```bash
 # Login to Heroku
@@ -34,8 +61,8 @@ heroku config:set STRIPE_PUBLISHABLE_KEY=pk_test_your_key
 heroku config:set WEBHOOK_SECRET=whsec_your_secret
 heroku config:set DOMAIN=https://your-stripe-app.herokuapp.com
 
-# Deploy from Git
-git push heroku main
+# Deploy this directory, not the repo root (example: subtree)
+git subtree push --prefix stripe-connect-sample heroku main
 
 # View logs
 heroku logs --tail
@@ -43,6 +70,10 @@ heroku logs --tail
 # Open the app
 heroku open
 ```
+
+The `Procfile` in this directory is `web: npm run build && npm start`. That command fails until `src/server.ts` exists or the scripts are updated.
+
+After a layout fix, **leave `npm run build` out of the Procfile**. The Node buildpack already compiles during slug compile, then prunes `devDependencies` (including `typescript`). At dyno boot `tsc` is gone, so `npm run build && npm start` exits with `tsc: not found` and `heroku ps` shows a crashed web dyno. Use `web: npm start` once `dist/server.js` is produced at compile time.
 
 ### Set Up Webhooks on Heroku
 
@@ -55,7 +86,7 @@ heroku apps:info your-stripe-app
 2. In Stripe Dashboard > Developers > Webhooks:
    - Add endpoint: `https://your-stripe-app.herokuapp.com/webhook`
    - Add endpoint: `https://your-stripe-app.herokuapp.com/webhook/thin` (for V2 events)
-   - Copy the signing secrets to `heroku config:set`
+   - Copy **one** signing secret into `heroku config:set WEBHOOK_SECRET=...` (both routes read that single var)
 
 ### Troubleshooting Heroku
 
@@ -96,6 +127,7 @@ git push origin main
    - Select "Deploy from GitHub repo"
    - Authorize Railway to access your repository
    - Select `explorenewfrontiers/public`
+   - Set the **root directory** to `stripe-connect-sample` (otherwise Railway builds the MCP server)
 
 3. **Configure environment variables in Railway:**
    - Go to project settings
@@ -134,10 +166,9 @@ Serverless deployment (requires refactoring for serverless).
 ### Deploy
 
 ```bash
-# Install Vercel CLI
+# From stripe-connect-sample/ after a layout fix
 npm install -g vercel
 
-# Deploy
 vercel --prod
 
 # Set environment variables
@@ -151,9 +182,9 @@ vercel --prod
 ```
 
 ### Important for Vercel
-- This requires converting to serverless functions
-- See `vercel.json` configuration below
-- Contact me if you want serverless architecture
+- `vercel.json` is not a working Express adapter. It sets `outputDirectory: dist` (static output) and `functions` for `api/**/*.ts`, but those files do not exist. There are no `rewrites` to an Express entry (`server.ts` is at the package root).
+- Long-lived webhook receivers and `express.raw` body handling do not map 1:1 onto serverless without a rewrite.
+- Prefer Heroku, Railway, or Docker until the app is split into functions.
 
 ---
 
@@ -161,15 +192,21 @@ vercel --prod
 
 Deploy using Docker to any cloud provider.
 
+`docker-compose.yml` builds this directory, publishes `3000:3000`, and passes `STRIPE_SECRET_KEY`, `STRIPE_PUBLISHABLE_KEY`, `WEBHOOK_SECRET`, `DOMAIN`, `PORT`, and `NODE_ENV`. Compose bind-mounts `./dist` over the image `dist/` — if the host `dist/` is empty (normal: `.dockerignore` excludes it), Compose creates an empty directory and `npm start` fails with `Cannot find module` even after a Dockerfile `COPY src` fix. Remove that volume for production `docker compose up`.
+
+The optional GitHub Actions file tags images as `ghcr.io/<github.repository>/stripe-connect` from context `./stripe-connect-sample`, and a follow-on job deploys to Heroku using `HEROKU_API_KEY`, `HEROKU_APP_NAME`, and `HEROKU_EMAIL`. That workflow is not active unless you copy it to the repo-root `.github/workflows/` directory.
+
 ### Prerequisites
 - Docker installed locally
-- Docker Hub account (free at https://hub.docker.com)
+- A `src/` layout **or** a Dockerfile rewritten to compile `server.ts` (see blockers above)
+- A `package-lock.json` in this directory, **or** change `npm ci` to `npm install`
+- Docker Hub account (free at https://hub.docker.com) if you push public images
 - Cloud provider account (AWS, DigitalOcean, GCP, etc.)
 
 ### Step 1: Build and Push Docker Image
 
 ```bash
-# Build the Docker image
+# From stripe-connect-sample/ — fails today on COPY src and npm ci
 docker build -t your-username/stripe-connect-sample .
 
 # Login to Docker Hub
@@ -208,10 +245,11 @@ docker run -d \
 1. Go to https://www.digitalocean.com/app-platform
 2. Click "Create App"
 3. Connect your GitHub repository
-4. Set build command: `npm run build`
-5. Set run command: `npm start`
-6. Add environment variables
-7. Deploy
+4. Set the source directory to `stripe-connect-sample`
+5. Set build command: `npm run build` (after the layout fix)
+6. Set run command: `npm start`
+7. Add environment variables
+8. Deploy
 
 #### Option C: Google Cloud Run
 
@@ -220,7 +258,7 @@ docker run -d \
 gcloud auth login
 gcloud config set project YOUR_PROJECT
 
-# Build and push to Google Container Registry
+# Build from stripe-connect-sample/ after the Dockerfile matches server.ts
 gcloud builds submit --tag gcr.io/YOUR_PROJECT/stripe-connect
 
 # Deploy to Cloud Run
@@ -228,7 +266,7 @@ gcloud run deploy stripe-connect \
   --image gcr.io/YOUR_PROJECT/stripe-connect \
   --platform managed \
   --region us-central1 \
-  --set-env-vars STRIPE_SECRET_KEY=sk_test_your_key,STRIPE_PUBLISHABLE_KEY=pk_test_your_key,WEBHOOK_SECRET=whsec_your_secret
+  --set-env-vars STRIPE_SECRET_KEY=sk_test_your_key,STRIPE_PUBLISHABLE_KEY=pk_test_your_key,WEBHOOK_SECRET=whsec_your_secret,DOMAIN=https://your-domain.com
 ```
 
 ---
@@ -238,9 +276,9 @@ gcloud run deploy stripe-connect \
 Before deploying anywhere, make sure you have:
 
 - [ ] **STRIPE_SECRET_KEY** - From Stripe Dashboard > Developers > API Keys
-- [ ] **STRIPE_PUBLISHABLE_KEY** - From Stripe Dashboard > Developers > API Keys
+- [ ] **STRIPE_PUBLISHABLE_KEY** - From Stripe Dashboard > Developers > API Keys (not injected into HTML today)
 - [ ] **WEBHOOK_SECRET** - From Stripe Dashboard > Developers > Webhooks
-- [ ] **DOMAIN** - Your production domain/URL
+- [ ] **DOMAIN** - Your production domain/URL (no trailing slash; used in Checkout and Account Links)
 - [ ] **PORT** - Usually 3000 (set by platform)
 
 ### Get Your Keys
@@ -261,15 +299,19 @@ In Stripe Dashboard > Developers > Webhooks:
 
 **Create endpoint for standard events:**
 - URL: `https://your-domain.com/webhook`
-- Events: `checkout.session.completed`, `checkout.session.async_payment_failed`
-- Copy the signing secret
+- Events the handler implements: `customer.subscription.updated`, `customer.subscription.deleted`, `invoice.payment_succeeded`
+- Copy the signing secret into `WEBHOOK_SECRET`
 
 **Create endpoint for V2 events:**
 - URL: `https://your-domain.com/webhook/thin`
 - Events from: "Connected accounts"
 - Payload style: "Thin"
-- Events: Select V2 account events
-- Copy the signing secret
+- Events the handler implements: `v2.core.account[requirements].updated`, `v2.core.account[configuration.merchant].capability_status_updated`
+- This sample reuses `WEBHOOK_SECRET`; a second Dashboard secret is not read unless you add another env var
+
+Do not subscribe only to `checkout.session.completed` / `checkout.session.async_payment_failed` — those types are not handled in `server.ts` (they would hit the default `Unhandled event type` log). The same is true for `payment_intent.succeeded`, `payment_intent.payment_failed`, and `checkout.session.expired`.
+
+Signature verification needs the **raw** body. `bodyParser.json()` is global in `server.ts`; expect `constructEvent` to fail until webhook routes parse raw JSON first.
 
 ### 2. Update Environment Variables
 
@@ -289,13 +331,10 @@ heroku config:set WEBHOOK_SECRET=whsec_your_secret
 ### 3. Test Webhooks
 
 ```bash
-# Test locally first
-stripe listen --events checkout.session.completed --forward-to localhost:3000/webhook
+# Test locally (events the handler implements)
+stripe listen --events customer.subscription.updated,customer.subscription.deleted,invoice.payment_succeeded --forward-to localhost:3000/webhook
 
-# Or from your production deployment
-curl -X POST https://your-domain.com/webhook \
-  -H "stripe-signature: test-sig" \
-  -d '{"type":"checkout.session.completed"}'
+# Unsigned curl will fail constructEvent (400). Use the CLI or the Dashboard "Send test webhook".
 ```
 
 ---
@@ -322,6 +361,7 @@ docker logs container-id
 **1. "Webhook signature verification failed"**
 - Check WEBHOOK_SECRET is correct
 - Ensure endpoint URL is exactly right (https://, no trailing slash)
+- Confirm the body is still raw when `constructEvent` / `parseThinEvent` runs
 
 **2. "STRIPE_SECRET_KEY is not set"**
 - Verify environment variables are set in deployment platform
@@ -334,6 +374,20 @@ docker logs container-id
 **4. Port conflicts**
 - Change PORT environment variable
 - Make sure firewall allows the port
+
+**5. Build copies `src/` / cannot find `dist/server.js` / `npm ci` missing lockfile**
+- Layout mismatch: source is `server.ts` at this directory root
+- Add a lockfile or switch Docker to `npm install`
+- Compose: remove the `./dist` bind mount or pre-build host `dist/`
+
+**6. Deployed the wrong app**
+- Repo-root Docker/Heroku/Railway starts the MCP server on 8000
+
+**7. `v2` is undefined**
+- Account APIs need a Stripe SDK that exports `v2.core`; `stripe@^15` may not
+
+**8. Heroku web dyno crashed after a layout fix**
+- Procfile still runs `npm run build` at boot; `tsc` was pruned. Use `web: npm start`
 
 ---
 
@@ -359,13 +413,13 @@ docker logs container-id
 
 ## Recommended: Start with Heroku or Railway
 
-Both are beginner-friendly and have free tiers:
+Both are beginner-friendly and have free tiers **once the `src/` layout is fixed**:
 
 | Platform | Cost | Setup Time | Best For |
 |----------|------|-----------|----------|
 | Heroku | Free tier available | 5 min | Beginners |
 | Railway | $5/month | 5 min | Modern approach |
-| Vercel | Free tier | 10 min | Serverless |
+| Vercel | Free tier | 10 min | Serverless (not drop-in) |
 | Docker | Cost of cloud provider | 15 min | Advanced |
 
 ---
@@ -374,7 +428,7 @@ Both are beginner-friendly and have free tiers:
 
 1. Check platform documentation
 2. Review the error logs
-3. Test locally with `npm run dev`
+3. Test locally with `npx ts-node ... server.ts` (not `npm run dev` until scripts match `server.ts`)
 4. Verify Stripe webhook configuration
 5. Check that all environment variables are set
 
