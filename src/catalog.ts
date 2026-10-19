@@ -15,6 +15,35 @@ export interface ProductRow {
   metadata?: Record<string, string>;
 }
 
+/**
+ * Parse a catalog Price cell into a dollar (major-unit) amount.
+ * Spreadsheet exports commonly store prices as `$10.00` or `1,299.00` text.
+ * `parseFloat` stops at the first non-digit, so those become NaN or `1`.
+ */
+export function parseCatalogPrice(raw: unknown): number {
+  if (typeof raw === 'number') {
+    return raw;
+  }
+  if (typeof raw !== 'string') {
+    return Number.parseFloat(String(raw));
+  }
+
+  let text = raw.trim().replace(/\u00a0/g, '');
+  text = text.replace(/\b(usd|eur|gbp|jpy|cad|aud)\b/gi, '');
+  text = text.replace(/[$€£¥]/g, '');
+  text = text.trim();
+
+  if (/^-?\d{1,3}(,\d{3})+(\.\d+)?$/.test(text)) {
+    text = text.replace(/,/g, '');
+  } else if (/^-?\d{1,3}(\.\d{3})+(,\d+)?$/.test(text)) {
+    text = text.replace(/\./g, '').replace(',', '.');
+  } else if (/^-?\d+,\d{1,2}$/.test(text)) {
+    text = text.replace(',', '.');
+  }
+
+  return Number.parseFloat(text);
+}
+
 export async function parseProductCatalog(filePath: string): Promise<ProductRow[]> {
   const workbook = XLSX.readFile(filePath);
   const sheetName = workbook.SheetNames[0];
@@ -25,8 +54,8 @@ export async function parseProductCatalog(filePath: string): Promise<ProductRow[
     id: (row['ID'] || row['id'] || '') as string,
     name: (row['Name'] || row['name'] || 'Unnamed Product') as string,
     description: (row['Description'] || row['description'] || '') as string,
-    price: parseFloat((row['Price'] || row['price'] || '0') as string),
-    currency: ((row['Currency'] || row['currency'] || 'usd') as string).toLowerCase(),
+    price: parseCatalogPrice(row['Price'] || row['price'] || '0'),
+    currency: ((row['Currency'] || row['currency'] || 'usd') as string).toLowerCase().trim(),
     image_url: (row['Image URL'] || row['image_url'] || '') as string,
     category: (row['Category'] || row['category'] || '') as string,
     sku: (row['SKU'] || row['sku'] || '') as string,
