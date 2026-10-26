@@ -15,26 +15,51 @@ export interface ProductRow {
   metadata?: Record<string, string>;
 }
 
+/**
+ * Spreadsheet exports commonly use ALL-CAPS headers (`NAME`), padded labels
+ * (` Name `), or a UTF-8 BOM on the first column. Exact `Name`/`name` lookups
+ * miss those keys, so every row becomes "Unnamed Product" at $0.
+ */
+export function normalizeCatalogHeader(key: string): string {
+  return String(key).replace(/^\uFEFF/, '').trim().toLowerCase();
+}
+
+export function normalizeCatalogRow(row: Record<string, unknown>): Record<string, unknown> {
+  const normalized: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(row)) {
+    const header = normalizeCatalogHeader(key);
+    if (!(header in normalized)) {
+      normalized[header] = value;
+    }
+  }
+  return normalized;
+}
+
 export async function parseProductCatalog(filePath: string): Promise<ProductRow[]> {
   const workbook = XLSX.readFile(filePath);
   const sheetName = workbook.SheetNames[0];
   const worksheet = workbook.Sheets[sheetName];
   const data = XLSX.utils.sheet_to_json(worksheet) as Record<string, unknown>[];
 
-  return data.map((row) => ({
-    id: (row['ID'] || row['id'] || '') as string,
-    name: (row['Name'] || row['name'] || 'Unnamed Product') as string,
-    description: (row['Description'] || row['description'] || '') as string,
-    price: parseFloat((row['Price'] || row['price'] || '0') as string),
-    currency: ((row['Currency'] || row['currency'] || 'usd') as string).toLowerCase(),
-    image_url: (row['Image URL'] || row['image_url'] || '') as string,
-    category: (row['Category'] || row['category'] || '') as string,
-    sku: (row['SKU'] || row['sku'] || '') as string,
-    metadata: {
-      category: (row['Category'] || row['category'] || '') as string,
-      sku: (row['SKU'] || row['sku'] || '') as string,
-    },
-  }));
+  return data.map((raw) => {
+    const row = normalizeCatalogRow(raw);
+    const category = (row['category'] || '') as string;
+    const sku = (row['sku'] || '') as string;
+    return {
+      id: (row['id'] || '') as string,
+      name: (row['name'] || 'Unnamed Product') as string,
+      description: (row['description'] || '') as string,
+      price: parseFloat((row['price'] || '0') as string),
+      currency: ((row['currency'] || 'usd') as string).toLowerCase(),
+      image_url: (row['image url'] || row['image_url'] || '') as string,
+      category,
+      sku,
+      metadata: {
+        category,
+        sku,
+      },
+    };
+  });
 }
 
 export async function syncProductsToStripe(
